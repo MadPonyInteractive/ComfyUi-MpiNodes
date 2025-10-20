@@ -1,0 +1,5270 @@
+{
+  "id": "365856d3-8ce2-4225-ba4b-e9f5447ab112",
+  "revision": 0,
+  "last_node_id": 225,
+  "last_link_id": 240,
+  "nodes": [
+    {
+      "id": 22,
+      "type": "MarkdownNote",
+      "pos": [
+        -735.25927734375,
+        2699.86767578125
+      ],
+      "size": [
+        833.210205078125,
+        743.4672241210938
+      ],
+      "flags": {},
+      "order": 0,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# Prompt Strategy\n\nThe goal of this system is to turn a prompt strategy into an automated system.\n\nIf you don't have a prompt strategy you can ask an LLM like ChatGPT for one. I asked windows CoPilot for the following:\n\n```\nGive me a prompt strategy for pictures of a elf that can be in different locations wearing different sets of clothes and in different poses\n```\n\n## This is what it gave me:\n\n🧝‍♀️ Modular Prompt Strategy: \"Elf in Context\"\n🔹 Base Structure\n\"A [adjective] elf [action/pose], wearing [clothing description], in [location], [lighting/style cues]\"\n\n\n🔹 Prompt Modules\n1. Elf Descriptor\n- Gender/Type: female elf, male elf, forest elf, high elf, dark elf\n- Adjectives: elegant, mischievous, battle-ready, regal, mysterious, youthful, ancient\n2. Pose / Action\n- Standing with arms crossed\n- Sitting on a tree stump\n- Casting a spell\n- Walking through mist\n- Drawing a bow\n- Dancing under moonlight\n3. Clothing / Outfit\n- Flowing green robes with leaf embroidery\n- Silver armor with glowing runes\n- Casual tunic and boots\n- Winter cloak with fur trim\n- Festival attire with floral crown\n- Hooded cloak with leather straps\n4. Location / Setting\n- Enchanted forest\n- Snowy mountain pass\n- Ancient ruins\n- Elven city at dusk\n- Moonlit glade\n- Misty swamp\n- Crystal cave\n5. Lighting / Style\n- Soft golden hour lighting\n- Dramatic shadows and moonlight\n- Ethereal glow with sparkles\n- Cinematic fantasy realism\n- Painterly style with rich textures\n\n🔹 Example Prompts\n- \"A regal high elf drawing a bow, wearing silver armor with glowing runes, in an ancient forest temple, cinematic lighting\"\n- \"A mischievous forest elf dancing under moonlight, dressed in festival attire with a floral crown, in a moonlit glade, ethereal glow\"\n- \"A battle-ready dark elf standing with arms crossed, wearing a hooded cloak and leather straps, in a misty swamp, dramatic shadows\"\n"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 11,
+      "type": "Label (rgthree)",
+      "pos": [
+        -738.0511474609375,
+        2586.590576171875
+      ],
+      "size": [
+        140,
+        60
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 1,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Goal",
+      "properties": {
+        "fontSize": 60,
+        "fontFamily": "Arial",
+        "fontColor": "#ffffff",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0,
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 26,
+      "type": "Label (rgthree)",
+      "pos": [
+        -729.04150390625,
+        3507.784912109375
+      ],
+      "size": [
+        173.466796875,
+        60
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 2,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Step 1",
+      "properties": {
+        "fontSize": 60,
+        "fontFamily": "Arial",
+        "fontColor": "#ffffff",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0,
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 25,
+      "type": "MarkdownNote",
+      "pos": [
+        -724.3768310546875,
+        3630.797607421875
+      ],
+      "size": [
+        614.7843627929688,
+        292.0086669921875
+      ],
+      "flags": {},
+      "order": 3,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# Step 1 - Lay down the strategy\n\n## We can start by laying down the strategy in a ***Mpi Prompt Processor*** node. This is the node where it all ends and gets processed, and also the node that receives your strategy.\n\n### As it stands, the strategy given to us by CoPilot was as follows:\n```\nA [adjective] elf [action/pose], wearing [clothing description], in [location], [lighting/style cues]\n```\n\n## ***Mpi Prompt Processor*** looks for words written in a certain way and replaces them according to it's connected _prompt lists_.\n\n## So we have to change this strategy for it. 👇👇👇\n\n\n"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 29,
+      "type": "Label (rgthree)",
+      "pos": [
+        -713.4977416992188,
+        4427.068359375
+      ],
+      "size": [
+        173.466796875,
+        60
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 4,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Step 2",
+      "properties": {
+        "fontSize": 60,
+        "fontFamily": "Arial",
+        "fontColor": "#ffffff",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0,
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 30,
+      "type": "MarkdownNote",
+      "pos": [
+        -718.4788208007812,
+        4547.77734375
+      ],
+      "size": [
+        591.8084716796875,
+        175.83078002929688
+      ],
+      "flags": {},
+      "order": 5,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# Step 2 - Create the inputs (Lists)\n\n## So far we can clearly see that we need 5 lists of options, so let's create them using the ***Mpi Prompt List*** node and using the lists CoPilot provied  us.\n\n## For the elf type we where provided with 2 things, ***Adjectives*** and ***Gender/Type*** we will tackle this later but for now we shall do 2 lists for this."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 37,
+      "type": "Label (rgthree)",
+      "pos": [
+        -703.5271606445312,
+        5305.23095703125
+      ],
+      "size": [
+        173.466796875,
+        60
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 6,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Step 3",
+      "properties": {
+        "fontSize": 60,
+        "fontFamily": "Arial",
+        "fontColor": "#ffffff",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0,
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 45,
+      "type": "Label (rgthree)",
+      "pos": [
+        -690.311279296875,
+        6171.52490234375
+      ],
+      "size": [
+        173.466796875,
+        60
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 7,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Step 4",
+      "properties": {
+        "fontSize": 60,
+        "fontFamily": "Arial",
+        "fontColor": "#ffffff",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0,
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 46,
+      "type": "MarkdownNote",
+      "pos": [
+        -685.0728149414062,
+        6291.6220703125
+      ],
+      "size": [
+        556.2688598632812,
+        116.14151763916016
+      ],
+      "flags": {},
+      "order": 8,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# Step 4 - Processing\n## Ok now we can connect our initial ***Mpi Prompt Processor*** to the end of the chain and see the result."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 55,
+      "type": "Display Any (rgthree)",
+      "pos": [
+        1609.67138671875,
+        6508.40185546875
+      ],
+      "size": [
+        371.75897216796875,
+        88
+      ],
+      "flags": {},
+      "order": 62,
+      "mode": 0,
+      "inputs": [
+        {
+          "dir": 3,
+          "name": "source",
+          "type": "*",
+          "link": 23
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "rgthree-comfy",
+        "ver": "1.0.2508241658",
+        "Node name for S&R": "Display Any (rgthree)",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "A Walking through mist, wearing Hooded cloak with leather straps, in a Snowy mountain pass. Painterly style with rich textures."
+      ]
+    },
+    {
+      "id": 57,
+      "type": "MarkdownNote",
+      "pos": [
+        1614.3917236328125,
+        6654.6025390625
+      ],
+      "size": [
+        366.12518310546875,
+        262.12823486328125
+      ],
+      "flags": {},
+      "order": 9,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "## Ok so we can see that all our \\_triggers_ have been replaced correctly but we still need to address the \\_elf_type_ trigger.\n\n## !Notice that \\_elf_type_ is gone, this is because the ***Mpi Prompt Processor*** _\"cleanup\"_ option is turned on, with it off, you can spot un-used trigger words"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 53,
+      "type": "MpiPromptProcessor",
+      "pos": [
+        1111.0118408203125,
+        6489.4619140625
+      ],
+      "size": [
+        431.8309020996094,
+        433.8226623535156
+      ],
+      "flags": {},
+      "order": 56,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "link": 197
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 198
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "positive",
+          "type": "STRING",
+          "links": [
+            23
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptProcessor",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "positive": true,
+            "negative": true,
+            "cleanup": true,
+            "seed": true,
+            "probability": true,
+            "opt_title": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "A _elf_type_ _action_, wearing _clothing_, in a _location_. _style_.",
+        "",
+        true,
+        851061501869933,
+        "randomize",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 38,
+      "type": "MarkdownNote",
+      "pos": [
+        -696.8187866210938,
+        5413.74755859375
+      ],
+      "size": [
+        580.5700073242188,
+        178.64181518554688
+      ],
+      "flags": {},
+      "order": 10,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# Step 3 - Connecting\n\n## The ***Mpi Prompt List*** node has handy inputs and outputs that allow us to share seeds and create chains of lists so lets connect them all in to 1 single chain.\n\n## I will leave the first 2 separate as I intend to convert them into 1 single trigger later."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 58,
+      "type": "Label (rgthree)",
+      "pos": [
+        -670.94775390625,
+        6978.486328125
+      ],
+      "size": [
+        173.466796875,
+        60
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 11,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Step 5",
+      "properties": {
+        "fontSize": 60,
+        "fontFamily": "Arial",
+        "fontColor": "#ffffff",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0,
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 68,
+      "type": "Label (rgthree)",
+      "pos": [
+        -652.5696411132812,
+        7836.7001953125
+      ],
+      "size": [
+        173.466796875,
+        60
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 12,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Step 6",
+      "properties": {
+        "fontSize": 60,
+        "fontFamily": "Arial",
+        "fontColor": "#ffffff",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0,
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 69,
+      "type": "MarkdownNote",
+      "pos": [
+        -653.1793212890625,
+        7953.16064453125
+      ],
+      "size": [
+        572.043701171875,
+        126.41388702392578
+      ],
+      "flags": {},
+      "order": 13,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# Step 6 - See the result\n\n## Ok now I really want to see what this will create, so I will connect it all up to a generator and check it out 😍😍"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 70,
+      "type": "Note",
+      "pos": [
+        336.24688720703125,
+        7654.32080078125
+      ],
+      "size": [
+        322.6011047363281,
+        88
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "👈 By placing \"elf type\" in the \"opt_title\" field we guarantee we can call it later by using _elf_type_ in another prompt processor!"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 82,
+      "type": "CLIPTextEncode",
+      "pos": [
+        2585.554931640625,
+        8115.30224609375
+      ],
+      "size": [
+        405.40521240234375,
+        88
+      ],
+      "flags": {},
+      "order": 70,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 53
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": 55
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            57
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "CLIPTextEncode",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "text": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        ""
+      ]
+    },
+    {
+      "id": 83,
+      "type": "CLIPTextEncode",
+      "pos": [
+        2597.311279296875,
+        8255.4326171875
+      ],
+      "size": [
+        391.89215087890625,
+        88
+      ],
+      "flags": {},
+      "order": 71,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "clip",
+          "type": "CLIP",
+          "link": 54
+        },
+        {
+          "name": "text",
+          "type": "STRING",
+          "widget": {
+            "name": "text"
+          },
+          "link": 56
+        }
+      ],
+      "outputs": [
+        {
+          "name": "CONDITIONING",
+          "type": "CONDITIONING",
+          "links": [
+            58
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "CLIPTextEncode",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "text": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        ""
+      ]
+    },
+    {
+      "id": 85,
+      "type": "VAEDecode",
+      "pos": [
+        3447.686767578125,
+        7955.84619140625
+      ],
+      "size": [
+        140,
+        46
+      ],
+      "flags": {},
+      "order": 73,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "samples",
+          "type": "LATENT",
+          "link": 60
+        },
+        {
+          "name": "vae",
+          "type": "VAE",
+          "link": 61
+        }
+      ],
+      "outputs": [
+        {
+          "name": "IMAGE",
+          "type": "IMAGE",
+          "links": [
+            62
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "VAEDecode",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 84,
+      "type": "EmptyLatentImage",
+      "pos": [
+        2716.630126953125,
+        8393.6572265625
+      ],
+      "size": [
+        270,
+        106
+      ],
+      "flags": {},
+      "order": 15,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            59
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "EmptyLatentImage",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "width": true,
+            "height": true,
+            "batch_size": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        1024,
+        1024,
+        1
+      ]
+    },
+    {
+      "id": 81,
+      "type": "KSampler",
+      "pos": [
+        3122.0244140625,
+        7954.49951171875
+      ],
+      "size": [
+        270,
+        474
+      ],
+      "flags": {},
+      "order": 72,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "model",
+          "type": "MODEL",
+          "link": 52
+        },
+        {
+          "name": "positive",
+          "type": "CONDITIONING",
+          "link": 57
+        },
+        {
+          "name": "negative",
+          "type": "CONDITIONING",
+          "link": 58
+        },
+        {
+          "name": "latent_image",
+          "type": "LATENT",
+          "link": 59
+        }
+      ],
+      "outputs": [
+        {
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": [
+            60
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "KSampler",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "seed": true,
+            "steps": true,
+            "cfg": true,
+            "sampler_name": true,
+            "scheduler": true,
+            "denoise": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        0,
+        "fixed",
+        20,
+        7,
+        "dpmpp_2m",
+        "karras",
+        1
+      ]
+    },
+    {
+      "id": 28,
+      "type": "MarkdownNote",
+      "pos": [
+        -68.62488555908203,
+        4006.533203125
+      ],
+      "size": [
+        476.8490905761719,
+        388.6332702636719
+      ],
+      "flags": {},
+      "order": 16,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Prompt Processor and types of triggers!",
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "\nLet's consider the list you are trying to trigger is named \"locations\" and has the following options:\n\n- Car Park\n- Movie Theater\n- Forest\n\nIn a prompt processor you can trigger an option on this list in 3 ways:\n- ***Single item***: \\_locations_\n\nThis will trigger a single item from your list like: \n```\nI went to the _locations_\nPossible Output: I went to the Forest\n```\n\n- ***Multiple items***: \\_locations_x3_\n\nThis will trigger 3 items from your list like: \n\n```\nVarious locations like the _locations_x3_\nPossible Output: Various locations like the Movie Theater, Car Park, Forest\n```\n\n- ***Single pick***: \\_locations_2_\n\nThis will trigger option 2 from your list, useful for when you want to trigger more than 1 item:\n\n```\nI went to the _locations_1_ and to the _locations_2_.\nPossible Output: I went to the Forest and to the Car Park.\n```\n"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 87,
+      "type": "Label (rgthree)",
+      "pos": [
+        -739.6823120117188,
+        2358.620849609375
+      ],
+      "size": [
+        672.607421875,
+        100
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 17,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Getting Started",
+      "properties": {
+        "fontSize": 100,
+        "fontFamily": "Arial",
+        "fontColor": "#ffffff",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0,
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 92,
+      "type": "Display Any (rgthree)",
+      "pos": [
+        4281.67529296875,
+        2852.609619140625
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 65,
+      "mode": 0,
+      "inputs": [
+        {
+          "dir": 3,
+          "name": "source",
+          "type": "*",
+          "link": 64
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "rgthree-comfy",
+        "ver": "1.0.2508241658",
+        "Node name for S&R": "Display Any (rgthree)",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "_list_c_"
+      ]
+    },
+    {
+      "id": 93,
+      "type": "Display Any (rgthree)",
+      "pos": [
+        4289.13232421875,
+        2981.684814453125
+      ],
+      "size": [
+        210,
+        88
+      ],
+      "flags": {},
+      "order": 66,
+      "mode": 0,
+      "inputs": [
+        {
+          "dir": 3,
+          "name": "source",
+          "type": "*",
+          "link": 65
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "rgthree-comfy",
+        "ver": "1.0.2508241658",
+        "Node name for S&R": "Display Any (rgthree)",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "_processed_prompt_"
+      ]
+    },
+    {
+      "id": 91,
+      "type": "Display Any (rgthree)",
+      "pos": [
+        4278.015625,
+        2705.890380859375
+      ],
+      "size": [
+        212.71017456054688,
+        88
+      ],
+      "flags": {},
+      "order": 64,
+      "mode": 0,
+      "inputs": [
+        {
+          "dir": 3,
+          "name": "source",
+          "type": "*",
+          "link": 63
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "rgthree-comfy",
+        "ver": "1.0.2508241658",
+        "Node name for S&R": "Display Any (rgthree)",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "_list_a_, _list_b_, _list_c_"
+      ]
+    },
+    {
+      "id": 98,
+      "type": "Display Any (rgthree)",
+      "pos": [
+        3842.367431640625,
+        3114.530517578125
+      ],
+      "size": [
+        302.05267333984375,
+        88
+      ],
+      "flags": {},
+      "order": 61,
+      "mode": 0,
+      "inputs": [
+        {
+          "dir": 3,
+          "name": "source",
+          "type": "*",
+          "link": 73
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "rgthree-comfy",
+        "ver": "1.0.2508241658",
+        "Node name for S&R": "Display Any (rgthree)",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "List A option 1 negative, List B option 2 negative."
+      ]
+    },
+    {
+      "id": 97,
+      "type": "Display Any (rgthree)",
+      "pos": [
+        3836.249755859375,
+        2971.050048828125
+      ],
+      "size": [
+        319.9505615234375,
+        88
+      ],
+      "flags": {},
+      "order": 60,
+      "mode": 0,
+      "inputs": [
+        {
+          "dir": 3,
+          "name": "source",
+          "type": "*",
+          "link": 72
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "rgthree-comfy",
+        "ver": "1.0.2508241658",
+        "Node name for S&R": "Display Any (rgthree)",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "List A option 2 positive, List B option 2 positive."
+      ]
+    },
+    {
+      "id": 96,
+      "type": "MpiPromptProcessor",
+      "pos": [
+        3286.636474609375,
+        2829.92236328125
+      ],
+      "size": [
+        400,
+        342
+      ],
+      "flags": {},
+      "order": 55,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "link": 232
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 233
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "PROMPT_LST",
+          "links": [
+            71
+          ]
+        },
+        {
+          "name": "positive",
+          "type": "STRING",
+          "links": [
+            72
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "STRING",
+          "links": [
+            73
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptProcessor",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "positive": true,
+            "negative": true,
+            "cleanup": true,
+            "seed": true,
+            "probability": true,
+            "opt_title": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "_list_a_, _list_b_, _list_c_.",
+        "_list_a_, _list_b_, _list_c_.",
+        true,
+        314752549207158,
+        "randomize",
+        1,
+        "processed prompt"
+      ]
+    },
+    {
+      "id": 89,
+      "type": "MpiDisplayPrompt",
+      "pos": [
+        3973.4873046875,
+        2830.27197265625
+      ],
+      "size": [
+        209.07421875,
+        66
+      ],
+      "flags": {},
+      "order": 59,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "link": 71
+        }
+      ],
+      "outputs": [
+        {
+          "name": "titles",
+          "type": "STRING",
+          "links": [
+            63
+          ]
+        },
+        {
+          "name": "blocks",
+          "type": "STRING",
+          "links": [
+            64
+          ]
+        },
+        {
+          "name": "processed_prompts",
+          "type": "STRING",
+          "links": [
+            65
+          ]
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiDisplayPrompt",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 105,
+      "type": "MarkdownNote",
+      "pos": [
+        3735.37353515625,
+        2614.266845703125
+      ],
+      "size": [
+        466.9847106933594,
+        134.69146728515625
+      ],
+      "flags": {},
+      "order": 18,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "## Mpi Prompt Display\n### This node can be very useful to find out what is reaching the end of a chain. \n- ***title***: Displays all available lists\n- ***blocks***: Displays all lists that meant to be blocked\n- ***processed_prompts***: Displays all available processed prompts  "
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 59,
+      "type": "MarkdownNote",
+      "pos": [
+        -672.173095703125,
+        7097.1494140625
+      ],
+      "size": [
+        566.3198852539062,
+        168.6302490234375
+      ],
+      "flags": {},
+      "order": 19,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "# Step 5 - Converting to single output\n## There's a few ways to convert lists into a single output and one of them is by using a ***Mpi Prompt Processor*** like below.\n\n## We connect a chain to it and then place a trigger word in the _\"opt_title\"_ field. This will allow us to use its result with a single trigger word."
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 67,
+      "type": "Display Any (rgthree)",
+      "pos": [
+        357.8049011230469,
+        7409.25244140625
+      ],
+      "size": [
+        280.8338317871094,
+        101.68597412109375
+      ],
+      "flags": {},
+      "order": 53,
+      "mode": 0,
+      "inputs": [
+        {
+          "dir": 3,
+          "name": "source",
+          "type": "*",
+          "link": 35
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "rgthree-comfy",
+        "ver": "1.0.2508241658",
+        "Node name for S&R": "Display Any (rgthree)",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "A elegant male elf"
+      ]
+    },
+    {
+      "id": 66,
+      "type": "MpiPromptProcessor",
+      "pos": [
+        -83.3238296508789,
+        7345.59912109375
+      ],
+      "size": [
+        400,
+        342
+      ],
+      "flags": {},
+      "order": 47,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "link": 200
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 202
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "PROMPT_LST",
+          "links": [
+            80
+          ]
+        },
+        {
+          "name": "positive",
+          "type": "STRING",
+          "links": [
+            35
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptProcessor",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "positive": true,
+            "negative": true,
+            "cleanup": true,
+            "seed": true,
+            "probability": true,
+            "opt_title": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "_adjectives_ _gender_type_",
+        "",
+        true,
+        994606969894296,
+        "randomize",
+        1,
+        "elf type"
+      ]
+    },
+    {
+      "id": 109,
+      "type": "Display Any (rgthree)",
+      "pos": [
+        1187.1927490234375,
+        7363.494140625
+      ],
+      "size": [
+        280.8338317871094,
+        101.68597412109375
+      ],
+      "flags": {},
+      "order": 57,
+      "mode": 0,
+      "inputs": [
+        {
+          "dir": 3,
+          "name": "source",
+          "type": "*",
+          "link": 81
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "rgthree-comfy",
+        "ver": "1.0.2508241658",
+        "Node name for S&R": "Display Any (rgthree)",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "A elegant male elf"
+      ]
+    },
+    {
+      "id": 108,
+      "type": "MpiPromptProcessor",
+      "pos": [
+        738.0435180664062,
+        7342.7822265625
+      ],
+      "size": [
+        400,
+        342
+      ],
+      "flags": {},
+      "order": 52,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "link": 80
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "positive",
+          "type": "STRING",
+          "links": [
+            81
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptProcessor",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "positive": true,
+            "negative": true,
+            "cleanup": true,
+            "seed": true,
+            "probability": true,
+            "opt_title": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "_elf_type_",
+        "",
+        true,
+        912597927962356,
+        "randomize",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 86,
+      "type": "PreviewImage",
+      "pos": [
+        3624.456298828125,
+        7954.49462890625
+      ],
+      "size": [
+        449.58258056640625,
+        484.7462463378906
+      ],
+      "flags": {},
+      "order": 74,
+      "mode": 4,
+      "inputs": [
+        {
+          "name": "images",
+          "type": "IMAGE",
+          "link": 62
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "PreviewImage",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": []
+    },
+    {
+      "id": 88,
+      "type": "Label (rgthree)",
+      "pos": [
+        2177.706298828125,
+        2358.1171875
+      ],
+      "size": [
+        483.740234375,
+        100
+      ],
+      "flags": {
+        "allow_interaction": true
+      },
+      "order": 20,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "title": "Debugging",
+      "properties": {
+        "fontSize": 100,
+        "fontFamily": "Arial",
+        "fontColor": "#ffffff",
+        "textAlign": "left",
+        "backgroundColor": "transparent",
+        "padding": 0,
+        "borderRadius": 0,
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "color": "#fff0",
+      "bgcolor": "#fff0"
+    },
+    {
+      "id": 75,
+      "type": "MpiPromptProcessor",
+      "pos": [
+        1594.4515380859375,
+        8154.65234375
+      ],
+      "size": [
+        431.8309020996094,
+        433.8226623535156
+      ],
+      "flags": {},
+      "order": 68,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "link": 227
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 225
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "positive",
+          "type": "STRING",
+          "links": [
+            41,
+            55
+          ]
+        },
+        {
+          "name": "negative",
+          "type": "STRING",
+          "links": [
+            56
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptProcessor",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "positive": true,
+            "negative": true,
+            "cleanup": true,
+            "seed": true,
+            "probability": true,
+            "opt_title": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "_elf_type_ _action_, wearing _clothing_, in a _location_. _style_.",
+        "",
+        true,
+        264416181212326,
+        "randomize",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 80,
+      "type": "CheckpointLoaderSimple",
+      "pos": [
+        2116.1484375,
+        7957.0478515625
+      ],
+      "size": [
+        348.1747131347656,
+        98
+      ],
+      "flags": {},
+      "order": 21,
+      "mode": 4,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "MODEL",
+          "type": "MODEL",
+          "links": [
+            52
+          ]
+        },
+        {
+          "name": "CLIP",
+          "type": "CLIP",
+          "links": [
+            53,
+            54
+          ]
+        },
+        {
+          "name": "VAE",
+          "type": "VAE",
+          "links": [
+            61
+          ]
+        }
+      ],
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.3.59",
+        "Node name for S&R": "CheckpointLoaderSimple",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "ckpt_name": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "SDXL\\sd_xl_base_1.0_0.9vae.safetensors"
+      ],
+      "color": "#232",
+      "bgcolor": "#353"
+    },
+    {
+      "id": 27,
+      "type": "MpiPromptProcessor",
+      "pos": [
+        -714.0675659179688,
+        3989.49853515625
+      ],
+      "size": [
+        604.6658325195312,
+        388.5563659667969
+      ],
+      "flags": {},
+      "order": 22,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "positive",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "negative",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptProcessor",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "positive": true,
+            "negative": true,
+            "cleanup": true,
+            "seed": true,
+            "probability": true,
+            "opt_title": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "A _elf_type_ _action_, wearing _clothing_, in _location_. _style_.",
+        "",
+        true,
+        499064665223473,
+        "randomize",
+        1,
+        ""
+      ]
+    },
+    {
+      "id": 111,
+      "type": "Note",
+      "pos": [
+        -998.4645385742188,
+        7407.62158203125
+      ],
+      "size": [
+        322.6011047363281,
+        88
+      ],
+      "flags": {},
+      "order": 23,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [],
+      "properties": {
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "I added an \"A \" prefix here so that all the items in the list are prefixed by \"A \". This is a handy way to alter the hole list without having to change all options manually. 👉👉👉👉👉👉👉👉👉👉👉👉👉👉"
+      ],
+      "color": "#432",
+      "bgcolor": "#653"
+    },
+    {
+      "id": 187,
+      "type": "MpiPromptList",
+      "pos": [
+        -392.54132080078125,
+        4823.1025390625
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 24,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "gender type",
+        "",
+        "female elf\nmale elf\nforest elf\nhigh elf\ndark elf",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        1089349027803623,
+        "randomize",
+        1
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 188,
+      "type": "MpiPromptList",
+      "pos": [
+        -26.742456436157227,
+        4826.75146484375
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Action",
+        "",
+        "Standing with arms crossed\nSitting on a tree stump\nCasting a spell\nWalking through mist\nDrawing a bow\nDancing under moonlight\n",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        30138523752689,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 189,
+      "type": "MpiPromptList",
+      "pos": [
+        255.27557373046875,
+        4829.04736328125
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 26,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "clothing",
+        "",
+        "Flowing green robes with leaf embroidery\nSilver armor with glowing runes\nCasual tunic and boots\nWinter cloak with fur trim\nFestival attire with floral crown\nHooded cloak with leather straps\n",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        460259245057759,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 190,
+      "type": "MpiPromptList",
+      "pos": [
+        542.6986694335938,
+        4828.64208984375
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 27,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Location",
+        "",
+        "Enchanted forest\nSnowy mountain pass\nAncient ruins\nElven city at dusk\nMoonlit glade\nMisty swamp\nCrystal cave\n",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        174301756975772,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 191,
+      "type": "MpiPromptList",
+      "pos": [
+        840.868408203125,
+        4828.2490234375
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 28,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "style",
+        "",
+        "Soft golden hour lighting\nDramatic shadows and moonlight\nEthereal glow with sparkles\nCinematic fantasy realism\nPainterly style with rich textures",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        7064993980837,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 186,
+      "type": "MpiPromptList",
+      "pos": [
+        -692.12646484375,
+        4823.50732421875
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 29,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Adjectives",
+        "",
+        "elegant\nmischievous\nbattle-ready\nregal\nmysterious\nyouthful\nancient",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        611205612180002,
+        "randomize",
+        1
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 192,
+      "type": "MpiPromptList",
+      "pos": [
+        -388.39703369140625,
+        5668.47705078125
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 30,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "gender type",
+        "",
+        "female elf\nmale elf\nforest elf\nhigh elf\ndark elf",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        782330336907761,
+        "randomize",
+        1
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 196,
+      "type": "MpiPromptList",
+      "pos": [
+        845.012939453125,
+        5673.62353515625
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 50,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 187
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 190
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "style",
+        "",
+        "Soft golden hour lighting\nDramatic shadows and moonlight\nEthereal glow with sparkles\nCinematic fantasy realism\nPainterly style with rich textures",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        161167590679381,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 197,
+      "type": "MpiPromptList",
+      "pos": [
+        -687.9818725585938,
+        5668.8818359375
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 31,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Adjectives",
+        "",
+        "elegant\nmischievous\nbattle-ready\nregal\nmysterious\nyouthful\nancient",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        607753860765782,
+        "randomize",
+        1
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 193,
+      "type": "MpiPromptList",
+      "pos": [
+        -22.59811782836914,
+        5672.1259765625
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 32,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            185
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            188
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Action",
+        "",
+        "Standing with arms crossed\nSitting on a tree stump\nCasting a spell\nWalking through mist\nDrawing a bow\nDancing under moonlight\n",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        17734814668321,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 194,
+      "type": "MpiPromptList",
+      "pos": [
+        259.41986083984375,
+        5674.421875
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 40,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 185
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 188
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            186
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            189
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "clothing",
+        "",
+        "Flowing green robes with leaf embroidery\nSilver armor with glowing runes\nCasual tunic and boots\nWinter cloak with fur trim\nFestival attire with floral crown\nHooded cloak with leather straps\n",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        236858686564552,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 195,
+      "type": "MpiPromptList",
+      "pos": [
+        546.84326171875,
+        5674.0166015625
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 45,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 186
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 189
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            187
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            190
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Location",
+        "",
+        "Enchanted forest\nSnowy mountain pass\nAncient ruins\nElven city at dusk\nMoonlit glade\nMisty swamp\nCrystal cave\n",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        847476228299161,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 199,
+      "type": "MpiPromptList",
+      "pos": [
+        -42.791603088378906,
+        6487.1240234375
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 33,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            191
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            192
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Action",
+        "",
+        "Standing with arms crossed\nSitting on a tree stump\nCasting a spell\nWalking through mist\nDrawing a bow\nDancing under moonlight\n",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        306458894150379,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 200,
+      "type": "MpiPromptList",
+      "pos": [
+        239.22633361816406,
+        6489.419921875
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 41,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 191
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 192
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            193
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            194
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "clothing",
+        "",
+        "Flowing green robes with leaf embroidery\nSilver armor with glowing runes\nCasual tunic and boots\nWinter cloak with fur trim\nFestival attire with floral crown\nHooded cloak with leather straps\n",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        44482514392328,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 201,
+      "type": "MpiPromptList",
+      "pos": [
+        526.6499633789062,
+        6489.0146484375
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 46,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 193
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 194
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            195
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            196
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Location",
+        "",
+        "Enchanted forest\nSnowy mountain pass\nAncient ruins\nElven city at dusk\nMoonlit glade\nMisty swamp\nCrystal cave\n",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        710583941927315,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 203,
+      "type": "MpiPromptList",
+      "pos": [
+        -682.059814453125,
+        6488.232421875
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 34,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Adjectives",
+        "",
+        "elegant\nmischievous\nbattle-ready\nregal\nmysterious\nyouthful\nancient",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        956050385103790,
+        "randomize",
+        1
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 202,
+      "type": "MpiPromptList",
+      "pos": [
+        824.8196411132812,
+        6488.62158203125
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 51,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 195
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 196
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            197
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            198
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "style",
+        "",
+        "Soft golden hour lighting\nDramatic shadows and moonlight\nEthereal glow with sparkles\nCinematic fantasy realism\nPainterly style with rich textures",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        770836147316134,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 198,
+      "type": "MpiPromptList",
+      "pos": [
+        -382.4749755859375,
+        6487.82763671875
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 35,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": null
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "gender type",
+        "",
+        "female elf\nmale elf\nforest elf\nhigh elf\ndark elf",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        756589742068862,
+        "randomize",
+        1
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 205,
+      "type": "MpiPromptList",
+      "pos": [
+        -658.6602172851562,
+        7343.1904296875
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 36,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            199
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            201
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Adjectives",
+        "A ",
+        "elegant\nmischievous\nbattle-ready\nregal\nmysterious\nyouthful\nancient",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        452839124872106,
+        "randomize",
+        1
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 204,
+      "type": "MpiPromptList",
+      "pos": [
+        -359.0756530761719,
+        7342.78564453125
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 42,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 199
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 201
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            200
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            202
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "gender type",
+        "",
+        "female elf\nmale elf\nforest elf\nhigh elf\ndark elf",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        59707263489884,
+        "randomize",
+        1
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 208,
+      "type": "MpiPromptList",
+      "pos": [
+        -336.1846008300781,
+        8155.421875
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 43,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 207
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 208
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            205
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            206
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "gender type",
+        "",
+        "female elf\nmale elf\nforest elf\nhigh elf\ndark elf",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        331457943946357,
+        "randomize",
+        1
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 207,
+      "type": "MpiPromptList",
+      "pos": [
+        -635.7692260742188,
+        8155.82666015625
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 37,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            207
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            208
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Adjectives",
+        "A ",
+        "elegant\nmischievous\nbattle-ready\nregal\nmysterious\nyouthful\nancient",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        719734230958395,
+        "randomize",
+        1
+      ],
+      "color": "#223",
+      "bgcolor": "#335"
+    },
+    {
+      "id": 210,
+      "type": "MpiPromptList",
+      "pos": [
+        662.1072998046875,
+        8158.53125
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 58,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 212
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 213
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            214
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            215
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "clothing",
+        "",
+        "Flowing green robes with leaf embroidery\nSilver armor with glowing runes\nCasual tunic and boots\nWinter cloak with fur trim\nFestival attire with floral crown\nHooded cloak with leather straps\n",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        712041459935994,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 211,
+      "type": "MpiPromptList",
+      "pos": [
+        949.5309448242188,
+        8158.1259765625
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 63,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 214
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 215
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            216
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            217
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Location",
+        "",
+        "Enchanted forest\nSnowy mountain pass\nAncient ruins\nElven city at dusk\nMoonlit glade\nMisty swamp\nCrystal cave\n",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        473303975128356,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 209,
+      "type": "MpiPromptList",
+      "pos": [
+        380.0893859863281,
+        8156.2353515625
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 54,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 226
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            212
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            213
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "Action",
+        "",
+        "Standing with arms crossed\nSitting on a tree stump\nCasting a spell\nWalking through mist\nDrawing a bow\nDancing under moonlight\n",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        998877612944633,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 206,
+      "type": "MpiPromptProcessor",
+      "pos": [
+        -60.432762145996094,
+        8158.2353515625
+      ],
+      "size": [
+        400,
+        342
+      ],
+      "flags": {},
+      "order": 48,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "link": 205
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 206
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt",
+          "type": "PROMPT_LST",
+          "links": [
+            226
+          ]
+        },
+        {
+          "name": "positive",
+          "type": "STRING",
+          "links": []
+        },
+        {
+          "name": "negative",
+          "type": "STRING",
+          "links": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            225
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptProcessor",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "positive": true,
+            "negative": true,
+            "cleanup": true,
+            "seed": true,
+            "probability": true,
+            "opt_title": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "_adjectives_ _gender_type_",
+        "",
+        true,
+        437510456986745,
+        "randomize",
+        1,
+        "elf type"
+      ]
+    },
+    {
+      "id": 212,
+      "type": "MpiPromptList",
+      "pos": [
+        1247.7005615234375,
+        8157.732421875
+      ],
+      "size": [
+        255.41029357910156,
+        436.6470031738281
+      ],
+      "flags": {},
+      "order": 67,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 216
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 217
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            227
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": []
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "style",
+        "",
+        "Soft golden hour lighting\nDramatic shadows and moonlight\nEthereal glow with sparkles\nCinematic fantasy realism\nPainterly style with rich textures",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        1116104494484906,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 214,
+      "type": "MpiPromptList",
+      "pos": [
+        2573.874755859375,
+        2802.955810546875
+      ],
+      "size": [
+        312.3002624511719,
+        388
+      ],
+      "flags": {},
+      "order": 44,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 228
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 230
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            229
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            231
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "List B",
+        "",
+        "List B option 1 \nList B option 2 positive | List B option 2 negative",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        335393838328991,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 213,
+      "type": "MpiPromptList",
+      "pos": [
+        2212.129150390625,
+        2805.387939453125
+      ],
+      "size": [
+        303.38165283203125,
+        388
+      ],
+      "flags": {},
+      "order": 38,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": null
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            228
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            230
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "list A",
+        "",
+        "List A option 1 positive | List A option 1 negative\nList A option 2 positive",
+        "",
+        "list c",
+        0,
+        -1,
+        true,
+        247922361813076,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 215,
+      "type": "MpiPromptList",
+      "pos": [
+        2944.537841796875,
+        2799.03662109375
+      ],
+      "size": [
+        303.38165283203125,
+        388
+      ],
+      "flags": {},
+      "order": 49,
+      "mode": 0,
+      "inputs": [
+        {
+          "name": "opt_chained_list",
+          "shape": 7,
+          "type": "PROMPT_LST",
+          "link": 229
+        },
+        {
+          "name": "opt_override",
+          "shape": 7,
+          "type": "PROMPT_OVR",
+          "link": null
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "widget": {
+            "name": "seed"
+          },
+          "link": 231
+        }
+      ],
+      "outputs": [
+        {
+          "name": "prompt_list",
+          "type": "PROMPT_LST",
+          "links": [
+            232
+          ]
+        },
+        {
+          "name": "seed",
+          "type": "INT",
+          "links": [
+            233
+          ]
+        },
+        {
+          "name": "boolean",
+          "type": "BOOLEAN",
+          "links": null
+        },
+        {
+          "name": "selected_options",
+          "type": "STRING",
+          "links": null
+        }
+      ],
+      "properties": {
+        "aux_id": "MadPonyInteractive/ComfyUi-MpiNodes",
+        "ver": "36c409fa6029b8c205c6c1445f7403ca1571d1f7",
+        "Node name for S&R": "MpiPromptList",
+        "ue_properties": {
+          "widget_ue_connectable": {
+            "title": true,
+            "prefix": true,
+            "options": true,
+            "suffix": true,
+            "blocks": true,
+            "amount": true,
+            "specific_item": true,
+            "random": true,
+            "seed": true,
+            "probability": true
+          },
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "list c",
+        "",
+        "List C option 1 \nList C option 2 positive",
+        "",
+        "",
+        0,
+        -1,
+        true,
+        1003486300975452,
+        "randomize",
+        1
+      ]
+    },
+    {
+      "id": 110,
+      "type": "Fast Groups Bypasser (rgthree)",
+      "pos": [
+        2102.96484375,
+        7801.73681640625
+      ],
+      "size": [
+        251.981689453125,
+        58
+      ],
+      "flags": {},
+      "order": 39,
+      "mode": 0,
+      "inputs": [],
+      "outputs": [
+        {
+          "name": "OPT_CONNECTION",
+          "type": "*",
+          "links": null
+        }
+      ],
+      "title": "Generation on/off",
+      "properties": {
+        "matchColors": "",
+        "matchTitle": "Generation",
+        "showNav": true,
+        "showAllGraphs": true,
+        "sort": "position",
+        "customSortAlphabet": "",
+        "toggleRestriction": "default",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      }
+    },
+    {
+      "id": 74,
+      "type": "Display Any (rgthree)",
+      "pos": [
+        3621.046630859375,
+        8507.10546875
+      ],
+      "size": [
+        469.9283447265625,
+        89.67810821533203
+      ],
+      "flags": {},
+      "order": 69,
+      "mode": 0,
+      "inputs": [
+        {
+          "dir": 3,
+          "name": "source",
+          "type": "*",
+          "link": 41
+        }
+      ],
+      "outputs": [],
+      "properties": {
+        "cnr_id": "rgthree-comfy",
+        "ver": "1.0.2508241658",
+        "Node name for S&R": "Display Any (rgthree)",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "version": "7.1",
+          "input_ue_unconnectable": {}
+        }
+      },
+      "widgets_values": [
+        "A battle-ready forest elf Drawing a bow, wearing Winter cloak with fur trim, in a Misty swamp. Cinematic fantasy realism."
+      ]
+    }
+  ],
+  "links": [
+    [
+      23,
+      53,
+      1,
+      55,
+      0,
+      "*"
+    ],
+    [
+      35,
+      66,
+      1,
+      67,
+      0,
+      "*"
+    ],
+    [
+      41,
+      75,
+      1,
+      74,
+      0,
+      "*"
+    ],
+    [
+      52,
+      80,
+      0,
+      81,
+      0,
+      "MODEL"
+    ],
+    [
+      53,
+      80,
+      1,
+      82,
+      0,
+      "CLIP"
+    ],
+    [
+      54,
+      80,
+      1,
+      83,
+      0,
+      "CLIP"
+    ],
+    [
+      55,
+      75,
+      1,
+      82,
+      1,
+      "STRING"
+    ],
+    [
+      56,
+      75,
+      2,
+      83,
+      1,
+      "STRING"
+    ],
+    [
+      57,
+      82,
+      0,
+      81,
+      1,
+      "CONDITIONING"
+    ],
+    [
+      58,
+      83,
+      0,
+      81,
+      2,
+      "CONDITIONING"
+    ],
+    [
+      59,
+      84,
+      0,
+      81,
+      3,
+      "LATENT"
+    ],
+    [
+      60,
+      81,
+      0,
+      85,
+      0,
+      "LATENT"
+    ],
+    [
+      61,
+      80,
+      2,
+      85,
+      1,
+      "VAE"
+    ],
+    [
+      62,
+      85,
+      0,
+      86,
+      0,
+      "IMAGE"
+    ],
+    [
+      63,
+      89,
+      0,
+      91,
+      0,
+      "*"
+    ],
+    [
+      64,
+      89,
+      1,
+      92,
+      0,
+      "*"
+    ],
+    [
+      65,
+      89,
+      2,
+      93,
+      0,
+      "*"
+    ],
+    [
+      71,
+      96,
+      0,
+      89,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      72,
+      96,
+      1,
+      97,
+      0,
+      "*"
+    ],
+    [
+      73,
+      96,
+      2,
+      98,
+      0,
+      "*"
+    ],
+    [
+      80,
+      66,
+      0,
+      108,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      81,
+      108,
+      1,
+      109,
+      0,
+      "*"
+    ],
+    [
+      185,
+      193,
+      0,
+      194,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      186,
+      194,
+      0,
+      195,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      187,
+      195,
+      0,
+      196,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      188,
+      193,
+      1,
+      194,
+      2,
+      "INT"
+    ],
+    [
+      189,
+      194,
+      1,
+      195,
+      2,
+      "INT"
+    ],
+    [
+      190,
+      195,
+      1,
+      196,
+      2,
+      "INT"
+    ],
+    [
+      191,
+      199,
+      0,
+      200,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      192,
+      199,
+      1,
+      200,
+      2,
+      "INT"
+    ],
+    [
+      193,
+      200,
+      0,
+      201,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      194,
+      200,
+      1,
+      201,
+      2,
+      "INT"
+    ],
+    [
+      195,
+      201,
+      0,
+      202,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      196,
+      201,
+      1,
+      202,
+      2,
+      "INT"
+    ],
+    [
+      197,
+      202,
+      0,
+      53,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      198,
+      202,
+      1,
+      53,
+      1,
+      "INT"
+    ],
+    [
+      199,
+      205,
+      0,
+      204,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      200,
+      204,
+      0,
+      66,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      201,
+      205,
+      1,
+      204,
+      2,
+      "INT"
+    ],
+    [
+      202,
+      204,
+      1,
+      66,
+      1,
+      "INT"
+    ],
+    [
+      205,
+      208,
+      0,
+      206,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      206,
+      208,
+      1,
+      206,
+      1,
+      "INT"
+    ],
+    [
+      207,
+      207,
+      0,
+      208,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      208,
+      207,
+      1,
+      208,
+      2,
+      "INT"
+    ],
+    [
+      212,
+      209,
+      0,
+      210,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      213,
+      209,
+      1,
+      210,
+      2,
+      "INT"
+    ],
+    [
+      214,
+      210,
+      0,
+      211,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      215,
+      210,
+      1,
+      211,
+      2,
+      "INT"
+    ],
+    [
+      216,
+      211,
+      0,
+      212,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      217,
+      211,
+      1,
+      212,
+      2,
+      "INT"
+    ],
+    [
+      225,
+      206,
+      3,
+      75,
+      1,
+      "INT"
+    ],
+    [
+      226,
+      206,
+      0,
+      209,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      227,
+      212,
+      0,
+      75,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      228,
+      213,
+      0,
+      214,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      229,
+      214,
+      0,
+      215,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      230,
+      213,
+      1,
+      214,
+      2,
+      "INT"
+    ],
+    [
+      231,
+      214,
+      1,
+      215,
+      2,
+      "INT"
+    ],
+    [
+      232,
+      215,
+      0,
+      96,
+      0,
+      "PROMPT_LST"
+    ],
+    [
+      233,
+      215,
+      1,
+      96,
+      1,
+      "INT"
+    ]
+  ],
+  "groups": [
+    {
+      "id": 2,
+      "title": "Basic Structure",
+      "bounding": [
+        -748.0511474609375,
+        2542.990478515625,
+        2803.555419921875,
+        6073.44384765625
+      ],
+      "color": "#444",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 3,
+      "title": "Debugging",
+      "bounding": [
+        2176.363525390625,
+        2540.666748046875,
+        2324.36083984375,
+        671.8636474609375
+      ],
+      "color": "#444",
+      "font_size": 24,
+      "flags": {}
+    },
+    {
+      "id": 4,
+      "title": "Generation",
+      "bounding": [
+        2104.369140625,
+        7880.89453125,
+        1996.60595703125,
+        725.8875732421875
+      ],
+      "color": "#3f789e",
+      "font_size": 24,
+      "flags": {}
+    }
+  ],
+  "config": {},
+  "extra": {
+    "ue_links": [],
+    "ds": {
+      "scale": 0.31384283767210114,
+      "offset": [
+        2445.601959857549,
+        -6055.072464552781
+      ]
+    },
+    "links_added_by_ue": [],
+    "reroutes": [
+      {
+        "id": 1,
+        "pos": [
+          2124.369140625,
+          8518.9228515625
+        ],
+        "linkIds": [
+          41
+        ]
+      }
+    ],
+    "linkExtensions": [
+      {
+        "id": 41,
+        "parentId": 1
+      }
+    ],
+    "frontendVersion": "1.28.7",
+    "VHS_latentpreview": false,
+    "VHS_latentpreviewrate": 0,
+    "VHS_MetadataImage": true,
+    "VHS_KeepIntermediate": true
+  },
+  "version": 0.4
+}
