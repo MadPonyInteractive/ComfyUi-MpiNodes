@@ -1,9 +1,5 @@
 from .prompt_gen.prompt_list import MpiPromptList
-from .prompt_gen.prompt_list_selector import (
-    MpiPromptListSelector,
-    MpiPromptListSelectorBool,
-    MpiPromptListSelectorBoolInverted,
-)
+from .prompt_gen.prompt_list_selector import MpiPromptListSelector
 from .prompt_gen.prompt_processor import MpiPromptProcessor
 from .prompt_gen.prompt_chain_selector import MpiPromptChainSelector
 from .prompt_gen.prompt_list_join import MpiPromptListJoin
@@ -50,7 +46,12 @@ from .combos import (
 from .loras import MpiDoubleLora, MpiLoraModel
 from .get_ratio import MpiAspectRatio
 from .json import MpiJsonLoad, MpiJsonSave
-from .if_else import MpiIfElse
+from .if_else import (
+    MpiIfElse,
+    MpiIfElseInverted,
+    MpiIfElseProbability,
+    MpiIfElseProbabilityInverted,
+)
 from .checkpoint import MpiFromCheckpoint, MpiToChekPoint
 
 # TEST NODES
@@ -66,8 +67,6 @@ NODE_CLASS_MAPPINGS = {
     "MpiTextListJoin": MpiTextListJoin,
     "MpiPromptList": MpiPromptList,
     "MpiPromptListSelector": MpiPromptListSelector,
-    "MpiPromptListSelectorBool": MpiPromptListSelectorBool,
-    "MpiPromptListSelectorBoolInverted": MpiPromptListSelectorBoolInverted,
     "MpiPromptProcessor": MpiPromptProcessor,
     "MpiNormalizeValue": MpiNormalizeValue,
     "MpiPromptChainSelector": MpiPromptChainSelector,
@@ -107,6 +106,9 @@ NODE_CLASS_MAPPINGS = {
     "MpiRandPromptGenSave": MpiRandPromptGenSave,
     "MpiRandPromptGen": MpiRandPromptGen,
     "MpiIfElse": MpiIfElse,
+    "MpiIfElseInverted": MpiIfElseInverted,
+    "MpiIfElseProbability": MpiIfElseProbability,
+    "MpiIfElseProbabilityInverted": MpiIfElseProbabilityInverted,
     "MpiFromCheckpoint": MpiFromCheckpoint,
     "MpiToChekPoint": MpiToChekPoint,
     # TESTS
@@ -122,8 +124,6 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiTextListJoin": "Mpi Text List Join",
     "MpiPromptList": "Mpi Prompt List",
     "MpiPromptListSelector": "Mpi Prompt List Selector",
-    "MpiPromptListSelectorBool": "Mpi Prompt List Selector Bool",
-    "MpiPromptListSelectorBoolInverted": "Mpi Prompt List Selector Bool Inverted",
     "MpiPromptProcessor": "Mpi Prompt Processor",
     "MpiNormalizeValue": "Mpi Normalize Value",
     "MpiPromptChainSelector": "Mpi Prompt Chain Selector",
@@ -164,6 +164,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiRandPromptGenOverrideSection": "Mpi RandPromptGen Override Section",
     "MpiRandPromptGenOverrideList": "Mpi RandPromptGen Override List",
     "MpiIfElse": "Mpi If Else",
+    "MpiIfElseProbability": "Mpi If Else Probability",
+    "MpiIfElseProbabilityInverted": "Mpi If Else Probability Inverted",
+    "MpiIfElseInverted": "Mpi If Else Inverted",
     "MpiFromCheckpoint": "Mpi From Checkpoint",
     "MpiToChekPoint": "Mpi To ChekPoint",
 }
