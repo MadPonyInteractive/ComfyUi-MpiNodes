@@ -1,0 +1,32 @@
+{
+    "pronouns":[
+        "she", "he", "they", "it"
+    ],
+    "shot_types":[
+        "close up shot",
+        "medium shot",
+        "full body shot",
+        "selfie shot from above",
+        "selfie shot from below",
+        "selfie shot"
+    ],
+    "poses":[
+        "touching hair",
+        "hands on hips",
+        "crossed arms"        
+    ],
+    "expressions":[
+        "smile",
+        "wink",
+        "tease",
+        "playful",
+        "tongue taunt",
+        "parted lips",
+        "sleepy eyes"
+    ],
+    "hair_styles":[
+        "long wavy ginger hair in a ponytail",
+        "straight long hair with pink highlights",
+        "long dark brown hair in buns with orange highlights"
+    ]
+}

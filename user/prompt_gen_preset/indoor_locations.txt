@@ -1,0 +1,35 @@
+bedroom
+living room
+kitchen
+bathroom
+hallway
+attic
+basement
+public toilet
+portable toilet
+sex shop
+hotel room
+hostel room
+laundry room  
+garage  
+storage room  
+closet  
+office  
+studio  
+waiting room  
+elevator  
+stairwell  
+corridor  
+locker room  
+changing room  
+gym
+library  
+community center  
+conference room  
+reception area  
+lounge  
+break room  
+club
+pub
+bar
+barn

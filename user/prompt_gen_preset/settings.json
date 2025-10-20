@@ -1,0 +1,26 @@
+{
+    "order": {
+        "sections": [
+            "shot_type",
+            "pre_positive",
+            "clothes",
+            "hair",
+            "pose",
+            "expression",
+            "location",
+            "light",
+            "post_positive"
+        ],
+        "transitions": [
+            ". ",
+            "",
+            ". ",
+            ". ",
+            ". ",
+            ". ",
+            ". ",
+            ". ",
+            ""
+        ]
+    }
+}

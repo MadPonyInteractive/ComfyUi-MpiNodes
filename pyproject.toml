@@ -1,0 +1,17 @@
+[project]
+name = "ComfyUi-MpiNodes"
+description = "A miscellaneous node pack for ComfyUi"
+version = "1.0.0"
+license = "LICENSE"
+
+[project.urls]
+Repository = "https://github.com/MadPonyInteractive/ComfyUi-MpiNodes"
+#  Used by Comfy Registry https://registry.comfy.org
+
+[tool.comfy]
+PublisherId = "mad-pony-interactive"
+DisplayName = "ComfyUi-MpiNodes"
+Icon = ""
+includes = [] 
+# "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
+
