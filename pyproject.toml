@@ -1,7 +1,15 @@
 [project]
 name = "ComfyUi-MpiNodes"
-description = "A miscellaneous node pack for ComfyUi"
-version = "1.0.0"
+description = """
+Removed: 
+MpiPromptListSelectorBool
+MpiPromptListSelectorBoolInverted
+Added:
+MpiIfElseInverted
+MpiIfElseProbability
+MpiIfElseProbabilityInverted
+"""
+version = "1.0.1"
 license = "LICENSE"
 
 [project.urls]
