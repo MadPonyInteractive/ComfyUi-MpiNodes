@@ -1,4 +1,79 @@
-class MpiBoolean:
+class MpiString:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "string": ("STRING", {"multiline": False}),
+            },
+        }
+
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("string",)
+    CATEGORY = "MpiNodes/Logic"
+    FUNCTION = "doit"
+
+    def doit(self, string: str):
+        return (string,)
+
+
+class MpiText(MpiString):
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"multiline": True}),
+            },
+        }
+
+    RETURN_NAMES = ("Text",)
+
+
+class MpiInt:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "int": (
+                    "INT",
+                    {"default": 0, "min": 0, "max": 0xFFFFFFFFFFFFFFFF},
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("INT",)
+    RETURN_NAMES = ("int",)
+    CATEGORY = "MpiNodes/Logic"
+    FUNCTION = "doit"
+
+    def doit(self, int: int):
+        return (int,)
+
+
+class MpiFloat:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "float": (
+                    "FLOAT",
+                    {
+                        "default": 0.0,
+                        "step": 0.01,
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("FLOAT",)
+    RETURN_NAMES = ("float",)
+    CATEGORY = "MpiNodes/Logic"
+    FUNCTION = "doit"
+
+    def doit(self, float: float):
+        return (float,)
+
+
+class MpiBool:
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -14,10 +89,24 @@ class MpiBoolean:
             },
         }
 
-    CATEGORY = "MpiNodes/logic"
+    CATEGORY = "MpiNodes/Logic"
+    FUNCTION = "doit"
+
+
+class MpiSimpleBoolean(MpiBool):
+    RETURN_TYPES = ("BOOLEAN",)
+    RETURN_NAMES = ("boolean",)
+
+    def doit(
+        self,
+        boolean,
+    ):
+        return (boolean,)
+
+
+class MpiBoolean(MpiBool):
     RETURN_TYPES = ("BOOLEAN", "INT", "FLOAT")
     RETURN_NAMES = ("boolean", "int", "float")
-    FUNCTION = "doit"
 
     def doit(
         self,

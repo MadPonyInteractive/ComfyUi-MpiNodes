@@ -1,15 +1,18 @@
 [project]
 name = "ComfyUi-MpiNodes"
 description = """
-Removed: 
-MpiPromptListSelectorBool
-MpiPromptListSelectorBoolInverted
 Added:
-MpiIfElseInverted
-MpiIfElseProbability
-MpiIfElseProbabilityInverted
+MpiFloat
+MpiInt
+MpiString
+MpiText
+MpiSimpleBool
+MpiBboxToMask
+MpiMultiText
+MpiGetImageAtIndex
+Fixed: Nodes category location
 """
-version = "1.0.1"
+version = "1.0.2"
 license = "LICENSE"
 
 [project.urls]

@@ -1,8 +1,54 @@
 import hashlib, re, random, os, json, shutil
 import comfy  # type: ignore
+import torch  # type:ignore
 import folder_paths as comfy_paths  # type: ignore
 
 _lora_cache = {}
+
+
+def create_mask_from_bbox(
+    image_tensor, bbox, normalized=False, bbox_format="xywh"
+):
+    if len(image_tensor.shape) == 4:
+        B, H, W, _ = image_tensor.shape
+    else:
+        B, H, W = image_tensor.shape
+
+    device = image_tensor.device
+    dtype = (
+        image_tensor.dtype
+        if image_tensor.dtype in [torch.float32, torch.float16]
+        else torch.float32
+    )
+
+    if bbox_format == "xywh":
+        x_min, y_min, box_w, box_h = bbox
+        if normalized:
+            x_min *= W
+            y_min *= H
+            box_w *= W
+            box_h *= H
+        x_max = x_min + box_w
+        y_max = y_min + box_h
+    elif bbox_format == "xyxy":
+        x_min, y_min, x_max, y_max = bbox
+        if normalized:
+            x_min *= W
+            y_min *= H
+            x_max *= W
+            y_max *= H
+    else:
+        raise ValueError(f"Unsupported bbox_format: {bbox_format}")
+
+    x_min = int(max(0, min(x_min, W)))
+    y_min = int(max(0, min(y_min, H)))
+    x_max = int(max(x_min, min(x_max, W)))
+    y_max = int(max(y_min, min(y_max, H)))
+
+    mask = torch.zeros((B, H, W), dtype=dtype, device=device)
+    mask[:, y_min:y_max, x_min:x_max] = 1.0
+
+    return mask  # shape: [B, H, W]
 
 
 class AlwaysEqualProxy(str):

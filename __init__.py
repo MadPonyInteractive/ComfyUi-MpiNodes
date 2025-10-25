@@ -19,10 +19,25 @@ from .prompt_gen.rand_prompt_gen import (
 )
 from .batch_text_replace import MpiBatchTextReplace
 from .add_image_to_list import MpiAddImageToList
+from .img import (
+    MpiBboxToMask,
+    MpiScaledDimensions,
+    MpiAspectRatio,
+    MpiGetImageAtIndex,
+    MpiMaskDebugInfo,
+)
 from .text_list_replace import MpiTextListReplace
 from .text_list_join import MpiTextListJoin
 from .normalize_value import MpiNormalizeValue
-from .boolean import MpiBoolean, MpiBooleanCompare
+from .logic import (
+    MpiBoolean,
+    MpiSimpleBoolean,
+    MpiBooleanCompare,
+    MpiFloat,
+    MpiInt,
+    MpiString,
+    MpiText,
+)
 from .switches import (
     MpiStringInvSwitch,
     MpiAnyInvSwitch,
@@ -44,7 +59,6 @@ from .combos import (
     MpiComboMaker,
 )
 from .loras import MpiDoubleLora, MpiLoraModel
-from .get_ratio import MpiAspectRatio
 from .json import MpiJsonLoad, MpiJsonSave
 from .if_else import (
     MpiIfElse,
@@ -53,6 +67,12 @@ from .if_else import (
     MpiIfElseProbabilityInverted,
 )
 from .checkpoint import MpiFromCheckpoint, MpiToChekPoint
+from .multi_text import (
+    MpiMultiTextX2,
+    MpiMultiTextX3,
+    MpiMultiTextX4,
+    MpiMultiTextX5,
+)
 
 # TEST NODES
 # from .dynamic_combo import MpiDynamicCombo
@@ -62,7 +82,9 @@ from .checkpoint import MpiFromCheckpoint, MpiToChekPoint
 
 NODE_CLASS_MAPPINGS = {
     "MpiBatchTextReplace": MpiBatchTextReplace,
+    "MpiBboxToMask": MpiBboxToMask,
     "MpiAddImageToList": MpiAddImageToList,
+    "MpiScaledDimensions": MpiScaledDimensions,
     "MpiTextListReplace": MpiTextListReplace,
     "MpiTextListJoin": MpiTextListJoin,
     "MpiPromptList": MpiPromptList,
@@ -72,7 +94,12 @@ NODE_CLASS_MAPPINGS = {
     "MpiPromptChainSelector": MpiPromptChainSelector,
     "MpiPromptListJoin": MpiPromptListJoin,
     "MpiBoolean": MpiBoolean,
+    "MpiSimpleBoolean": MpiSimpleBoolean,
     "MpiBooleanCompare": MpiBooleanCompare,
+    "MpiFloat": MpiFloat,
+    "MpiInt": MpiInt,
+    "MpiString": MpiString,
+    "MpiText": MpiText,
     "MpiDisplayPrompt": MpiDisplayPrompt,
     "MpiHasOptions": MpiHasOptions,
     "MpiPromptBridge": MpiPromptBridge,
@@ -96,6 +123,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiDoubleLora": MpiDoubleLora,
     "MpiLoraModel": MpiLoraModel,
     "MpiAspectRatio": MpiAspectRatio,
+    "MpiGetImageAtIndex": MpiGetImageAtIndex,
     "MpiPromptOverride": MpiPromptOverride,
     "MpiPromptOverrideSeed": MpiPromptOverrideSeed,
     "MpiJsonLoad": MpiJsonLoad,
@@ -111,6 +139,11 @@ NODE_CLASS_MAPPINGS = {
     "MpiIfElseProbabilityInverted": MpiIfElseProbabilityInverted,
     "MpiFromCheckpoint": MpiFromCheckpoint,
     "MpiToChekPoint": MpiToChekPoint,
+    "MpiMultiTextX2": MpiMultiTextX2,
+    "MpiMultiTextX3": MpiMultiTextX3,
+    "MpiMultiTextX4": MpiMultiTextX4,
+    "MpiMultiTextX5": MpiMultiTextX5,
+    "MpiMaskDebugInfo": MpiMaskDebugInfo,
     # TESTS
     # "MpiDummyToggleNode": MpiDummyToggleNode,
     # "MpiDynamicCombo": MpiDynamicCombo,
@@ -119,7 +152,9 @@ NODE_CLASS_MAPPINGS = {
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiBatchTextReplace": "Mpi Batch Text Replace",
+    "MpiBboxToMask": "Mpi Bbox To Mask",
     "MpiAddImageToList": "Mpi Add Image to List",
+    "MpiScaledDimensions": "Mpi Scaled Dimensions",
     "MpiTextListReplace": "Mpi Text List Replace",
     "MpiTextListJoin": "Mpi Text List Join",
     "MpiPromptList": "Mpi Prompt List",
@@ -129,7 +164,12 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiPromptChainSelector": "Mpi Prompt Chain Selector",
     "MpiPromptListJoin": "Mpi Prompt List Join",
     "MpiBoolean": "Mpi Boolean",
+    "MpiSimpleBoolean": "Mpi Simple Bool",
     "MpiBooleanCompare": "Mpi Boolean Compare",
+    "MpiFloat": "Mpi Float",
+    "MpiInt": "Mpi Int",
+    "MpiString": "Mpi String",
+    "MpiText": "Mpi Text",
     "MpiDisplayPrompt": "Mpi Prompt Display",
     "MpiHasOptions": "Mpi Has Options",
     "MpiPromptBridge": "Mpi Prompt Bridge",
@@ -154,6 +194,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiDoubleLora": "Mpi Double Lora Loader",
     "MpiLoraModel": "Mpi Lora Model",
     "MpiAspectRatio": "Mpi Get Aspect Ratio",
+    "MpiGetImageAtIndex": "Mpi Get Image At Index",
     "MpiPromptOverride": "Mpi Prompt Override",
     "MpiPromptOverrideSeed": "Mpi Prompt Override Seed",
     "MpiJsonLoad": "Mpi Json Load",
@@ -169,6 +210,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiIfElseInverted": "Mpi If Else Inverted",
     "MpiFromCheckpoint": "Mpi From Checkpoint",
     "MpiToChekPoint": "Mpi To ChekPoint",
+    "MpiMultiTextX2": "Mpi Multi Text x2",
+    "MpiMultiTextX3": "Mpi Multi Text x3",
+    "MpiMultiTextX4": "Mpi Multi Text x4",
+    "MpiMultiTextX5": "Mpi Multi Text x5",
 }
 
 WEB_DIRECTORY = "./web"
