@@ -1,9 +1,21 @@
-import hashlib, re, random, os, json, shutil
+import hashlib, re, random, os, json, shutil, math
 import comfy  # type: ignore
 import torch  # type:ignore
 import folder_paths as comfy_paths  # type: ignore
 
 _lora_cache = {}
+
+
+def round_to_multiple(value, multiple_of, round):
+    if multiple_of <= 0:
+        return (value,)  # avoid division by zero
+
+    if round:
+        rounded = math.ceil(value / multiple_of) * multiple_of
+    else:
+        rounded = math.floor(value / multiple_of) * multiple_of
+
+    return rounded
 
 
 def create_mask_from_bbox(

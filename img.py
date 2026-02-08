@@ -1,5 +1,82 @@
 import torch  # type:ignore
-from .help_funcs import aspect_ratio, create_mask_from_bbox
+from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple
+
+
+def get_box_dimensions(width, height, horizontal_split, vertical_split):
+    if horizontal_split <= 0 or vertical_split <= 0:
+        raise ValueError("Splits must be greater than 0")
+
+    box_width = width // horizontal_split
+    box_height = height // vertical_split
+
+    return box_width, box_height
+
+
+class MpiGridDimensions:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "horizontal_split": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 64,
+                    },
+                ),
+                "vertical_split": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 64,
+                    },
+                ),
+                "upscale_factor": (
+                    "FLOAT",
+                    {
+                        "default": 1.0,
+                        "step": 0.1,
+                        "min": 0.1,
+                        "max": 10.0,
+                    },
+                ),
+                "auto": (
+                    "BOOLEAN",
+                    {
+                        "default": False,
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "INT")
+    RETURN_NAMES = ("width", "height")
+    CATEGORY = "MpiNodes/ImgOps"
+    FUNCTION = "compute"
+
+    def compute(
+        self, image, horizontal_split, vertical_split, upscale_factor, auto
+    ):
+        _, H, W, _ = image.shape
+        is_portrait = H > W
+
+        W *= upscale_factor
+        H *= upscale_factor
+
+        bd: tuple
+
+        if auto:
+            if is_portrait:
+                bd = get_box_dimensions(W, H, 2, 3)
+            else:
+                bd = get_box_dimensions(W, H, 3, 2)
+        else:
+            bd = get_box_dimensions(W, H, horizontal_split, vertical_split)
+
+        return bd
 
 
 class MpiMaskDebugInfo:
@@ -102,13 +179,21 @@ class MpiScaledDimensions:
         return {
             "required": {
                 "image": ("IMAGE",),
-                "max_dimension": (
+                "size": (
                     "INT",
                     {
                         "default": 720,
                         "min": 0,
                         "max": 4096,
-                        "tooltip": "If 0, it will output the original dimmensions",
+                        "tooltip": "If 0, it will output the original dimensions",
+                    },
+                ),
+                "side": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "label_on": "use_max",
+                        "label_off": "use_min",
                     },
                 ),
             }
@@ -119,18 +204,17 @@ class MpiScaledDimensions:
     CATEGORY = "MpiNodes/ImgOps"
     FUNCTION = "compute"
 
-    def compute(self, image, max_dimension):
+    def compute(self, image, size, side):
         B, H, W, C = image.shape
         is_portrait = H > W
-        if not max_dimension:
+
+        if not size:
             return (W, H, is_portrait)
 
-        if is_portrait:
-            scaled_height = max_dimension
-            scaled_width = int((W / H) * max_dimension)
-        else:
-            scaled_width = max_dimension
-            scaled_height = int((H / W) * max_dimension)
+        target_dim = max(H, W) if side else min(H, W)
+        scale = size / target_dim
+        scaled_width = int(W * scale)
+        scaled_height = int(H * scale)
 
         return (scaled_width, scaled_height, is_portrait)
 
@@ -139,9 +223,9 @@ class MpiGetImageAtIndex:
     RETURN_TYPES = ("IMAGE", "INT")
     FUNCTION = "indexedimagesfrombatch"
     CATEGORY = "MpiNodes/ImgOps"
-    DESCRIPTION = (
-        """Returns the image at the specified index as an image batch."""
-    )
+    DESCRIPTION = """Returns the image at the specified index as an image batch.
+Negative values start counting from the last image.
+-1 would mean that you get the last image!"""
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -152,8 +236,8 @@ class MpiGetImageAtIndex:
                     "INT",
                     {
                         "default": "-1",
-                        "min": -99999999999,
-                        "tooltip": "Negative values start counting from the last image.\n-1 would mean that you get the last image!",
+                        "min": -0xFFFFFFFFFFFFFFFF,
+                        "max": 0xFFFFFFFFFFFFFFFF,
                     },
                 ),
             },

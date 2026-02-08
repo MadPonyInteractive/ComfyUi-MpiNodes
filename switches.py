@@ -113,6 +113,10 @@ class MpiInvertedSwitch:
     CATEGORY = "MpiNodes/Logic"
     FUNCTION = "use_selected"
 
+    # @classmethod
+    # def VALIDATE_INPUTS(cls, input_types):
+    #     return True
+
     def use_selected(self, input, select: int):
         ret = []
         for i in range(1, 6):

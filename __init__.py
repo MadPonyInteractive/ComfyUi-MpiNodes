@@ -25,11 +25,16 @@ from .img import (
     MpiAspectRatio,
     MpiGetImageAtIndex,
     MpiMaskDebugInfo,
+    MpiGridDimensions,
 )
 from .text_list_replace import MpiTextListReplace
 from .text_list_join import MpiTextListJoin
 from .normalize_value import MpiNormalizeValue
 from .logic import (
+    MpiRoundToMultiple,
+    MpiRoundToMultipleRes,
+    MpiCompare,
+    MpiConvert,
     MpiBoolean,
     MpiSimpleBoolean,
     MpiBooleanCompare,
@@ -73,6 +78,7 @@ from .multi_text import (
     MpiMultiTextX4,
     MpiMultiTextX5,
 )
+from .wan import MpiWanFrames, MpiWanSeconds
 
 # TEST NODES
 # from .dynamic_combo import MpiDynamicCombo
@@ -93,6 +99,10 @@ NODE_CLASS_MAPPINGS = {
     "MpiNormalizeValue": MpiNormalizeValue,
     "MpiPromptChainSelector": MpiPromptChainSelector,
     "MpiPromptListJoin": MpiPromptListJoin,
+    "MpiRoundToMultiple": MpiRoundToMultiple,
+    "MpiRoundToMultipleRes": MpiRoundToMultipleRes,
+    "MpiCompare": MpiCompare,
+    "MpiConvert": MpiConvert,
     "MpiBoolean": MpiBoolean,
     "MpiSimpleBoolean": MpiSimpleBoolean,
     "MpiBooleanCompare": MpiBooleanCompare,
@@ -144,6 +154,9 @@ NODE_CLASS_MAPPINGS = {
     "MpiMultiTextX4": MpiMultiTextX4,
     "MpiMultiTextX5": MpiMultiTextX5,
     "MpiMaskDebugInfo": MpiMaskDebugInfo,
+    "MpiGridDimensions": MpiGridDimensions,
+    "MpiWanFrames": MpiWanFrames,
+    "MpiWanSeconds": MpiWanSeconds,
     # TESTS
     # "MpiDummyToggleNode": MpiDummyToggleNode,
     # "MpiDynamicCombo": MpiDynamicCombo,
@@ -163,6 +176,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiNormalizeValue": "Mpi Normalize Value",
     "MpiPromptChainSelector": "Mpi Prompt Chain Selector",
     "MpiPromptListJoin": "Mpi Prompt List Join",
+    "MpiRoundToMultiple": "Mpi Round To Multiple",
+    "MpiRoundToMultipleRes": "Mpi Round To Multiple Res",
+    "MpiCompare": "Mpi Compare",
+    "MpiConvert": "Mpi Convert",
     "MpiBoolean": "Mpi Boolean",
     "MpiSimpleBoolean": "Mpi Simple Bool",
     "MpiBooleanCompare": "Mpi Boolean Compare",
@@ -195,6 +212,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiLoraModel": "Mpi Lora Model",
     "MpiAspectRatio": "Mpi Get Aspect Ratio",
     "MpiGetImageAtIndex": "Mpi Get Image At Index",
+    "MpiGridDimensions": "Mpi Grid Dimensions",
     "MpiPromptOverride": "Mpi Prompt Override",
     "MpiPromptOverrideSeed": "Mpi Prompt Override Seed",
     "MpiJsonLoad": "Mpi Json Load",
@@ -214,6 +232,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiMultiTextX3": "Mpi Multi Text x3",
     "MpiMultiTextX4": "Mpi Multi Text x4",
     "MpiMultiTextX5": "Mpi Multi Text x5",
+    "MpiWanFrames": "Mpi Wan Frames",
+    "MpiWanSeconds": "Mpi Wan Seconds",
 }
 
 WEB_DIRECTORY = "./web"
