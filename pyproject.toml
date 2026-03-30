@@ -1,18 +1,11 @@
 [project]
 name = "ComfyUi-MpiNodes"
 description = """
-Added:
-MpiFloat
-MpiInt
-MpiString
-MpiText
-MpiSimpleBool
-MpiBboxToMask
-MpiMultiText
-MpiGetImageAtIndex
-Fixed: Nodes category location
+Node changes:
+- added: MpiLoraModelClip
+- added: MpiMath
 """
-version = "1.0.3"
+version = "1.0.4"
 license = "LICENSE"
 
 [project.urls]
