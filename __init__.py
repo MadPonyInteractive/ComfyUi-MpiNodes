@@ -43,6 +43,7 @@ from .logic import (
     MpiString,
     MpiText,
 )
+from .math import MpiMath
 from .switches import (
     MpiStringInvSwitch,
     MpiAnyInvSwitch,
@@ -63,7 +64,7 @@ from .combos import (
     MpiCombo,
     MpiComboMaker,
 )
-from .loras import MpiDoubleLora, MpiLoraModel
+from .loras import MpiDoubleLora, MpiLoraModel, MpiLoraModelClip
 from .json import MpiJsonLoad, MpiJsonSave
 from .if_else import (
     MpiIfElse,
@@ -103,6 +104,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiRoundToMultipleRes": MpiRoundToMultipleRes,
     "MpiCompare": MpiCompare,
     "MpiConvert": MpiConvert,
+    "MpiMath": MpiMath,
     "MpiBoolean": MpiBoolean,
     "MpiSimpleBoolean": MpiSimpleBoolean,
     "MpiBooleanCompare": MpiBooleanCompare,
@@ -132,6 +134,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiComboMaker": MpiComboMaker,
     "MpiDoubleLora": MpiDoubleLora,
     "MpiLoraModel": MpiLoraModel,
+    "MpiLoraModelClip": MpiLoraModelClip,
     "MpiAspectRatio": MpiAspectRatio,
     "MpiGetImageAtIndex": MpiGetImageAtIndex,
     "MpiPromptOverride": MpiPromptOverride,
@@ -180,6 +183,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiRoundToMultipleRes": "Mpi Round To Multiple Res",
     "MpiCompare": "Mpi Compare",
     "MpiConvert": "Mpi Convert",
+    "MpiMath": "Mpi Math",
     "MpiBoolean": "Mpi Boolean",
     "MpiSimpleBoolean": "Mpi Simple Bool",
     "MpiBooleanCompare": "Mpi Boolean Compare",
@@ -210,6 +214,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiComboMaker": "Mpi Combo Maker [BETA]",
     "MpiDoubleLora": "Mpi Double Lora Loader",
     "MpiLoraModel": "Mpi Lora Model",
+    "MpiLoraModelClip": "Mpi Lora Model Clip",
     "MpiAspectRatio": "Mpi Get Aspect Ratio",
     "MpiGetImageAtIndex": "Mpi Get Image At Index",
     "MpiGridDimensions": "Mpi Grid Dimensions",

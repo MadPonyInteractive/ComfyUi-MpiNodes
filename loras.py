@@ -105,3 +105,55 @@ class MpiLoraModel:
         )
 
         return (model_out, lora_name, strength_model)
+
+
+class MpiLoraModelClip:
+    CATEGORY = "MpiNodes/ModelOps"
+    RETURN_TYPES = ("MODEL", "CLIP", AlwaysEqualProxy("*"), "FLOAT", "FLOAT")
+    RETURN_NAMES = (
+        "model",
+        "clip",
+        "lora_name",
+        "strength_model",
+        "strength_clip",
+    )
+    FUNCTION = "apply_lora"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        file_list = comfy_paths.get_filename_list("loras")
+        file_list.insert(0, "None")
+        return {
+            "required": {
+                "model": ("MODEL",),
+                "clip": ("CLIP",),
+                "lora_name": (file_list,),
+                "strength_model": (
+                    "FLOAT",
+                    {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01},
+                ),
+                "strength_clip": (
+                    "FLOAT",
+                    {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.01},
+                ),
+            },
+        }
+
+    def apply_lora(
+        self,
+        model,
+        clip,
+        lora_name,
+        strength_model,
+        strength_clip,
+    ):
+        if (strength_model == 0 and strength_clip == 0) or lora_name == "None":
+            return (model, clip, lora_name, strength_model, strength_clip)
+
+        lora = load_lora_cached(lora_name)
+
+        model_out, clip_out = comfy.sd.load_lora_for_models(
+            model, clip, lora, strength_model, strength_clip
+        )
+
+        return (model_out, clip_out, lora_name, strength_model, strength_clip)
