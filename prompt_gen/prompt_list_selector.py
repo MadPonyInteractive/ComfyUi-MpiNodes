@@ -28,6 +28,7 @@ class MpiPromptListSelector:
         }
 
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Probabilistically select between two prompt lists"
     RETURN_TYPES = ("PROMPT_LST", "BOOLEAN", "INT")
     RETURN_NAMES = ("prompt_list", "boolean", "seed")
     FUNCTION = "join_prompt_lists"

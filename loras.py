@@ -4,6 +4,7 @@ import comfy.sd  # type: ignore
 
 class MpiDoubleLora:
     CATEGORY = "MpiNodes/ModelOps"
+    DESCRIPTION = "Apply LoRA to two models and clips simultaneously"
     RETURN_TYPES = ("MODEL", "MODEL", "CLIP", "CLIP")
     RETURN_NAMES = (
         "model_a_out",
@@ -66,6 +67,7 @@ class MpiDoubleLora:
 
 class MpiLoraModel:
     CATEGORY = "MpiNodes/ModelOps"
+    DESCRIPTION = "Apply LoRA to model with strength control"
     RETURN_TYPES = ("MODEL", AlwaysEqualProxy("*"), "FLOAT")
     RETURN_NAMES = (
         "model",
@@ -109,6 +111,7 @@ class MpiLoraModel:
 
 class MpiLoraModelClip:
     CATEGORY = "MpiNodes/ModelOps"
+    DESCRIPTION = "Apply LoRA to model and clip with independent strength controls"
     RETURN_TYPES = ("MODEL", "CLIP", AlwaysEqualProxy("*"), "FLOAT", "FLOAT")
     RETURN_NAMES = (
         "model",

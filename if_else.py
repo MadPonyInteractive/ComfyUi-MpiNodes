@@ -23,6 +23,7 @@ class MpiIfElse:
     RETURN_TYPES = (AlwaysEqualProxy("*"),)
     RETURN_NAMES = ("output",)
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Output true or false value based on boolean condition"
     FUNCTION = "doit"
 
     @classmethod
@@ -60,6 +61,7 @@ class MpiIfElseInverted:
     RETURN_TYPES = (AlwaysEqualProxy("*"), AlwaysEqualProxy("*"))
     RETURN_NAMES = ("out_a", "out_b")
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Route input to output A or B based on boolean condition"
     FUNCTION = "doit"
 
     def doit(self, input, boolean: bool):
@@ -93,6 +95,7 @@ class MpiIfElseProbability:
         }
 
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Probabilistically choose between true and false outputs"
     RETURN_TYPES = (AlwaysEqualProxy("*"), "BOOLEAN", "INT")
     RETURN_NAMES = ("output", "boolean", "seed")
     FUNCTION = "doit"
@@ -147,6 +150,7 @@ class MpiIfElseProbabilityInverted:
         }
 
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Probabilistically route input to true or false output"
     RETURN_TYPES = (
         AlwaysEqualProxy("*"),
         AlwaysEqualProxy("*"),

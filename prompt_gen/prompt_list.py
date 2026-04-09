@@ -101,6 +101,7 @@ class MpiPromptList:
         }
 
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Create a prompt list with options, probability, and blocking rules"
     RETURN_TYPES = ("PROMPT_LST", "INT", "BOOLEAN", "STRING")
     RETURN_NAMES = ("prompt_list", "seed", "boolean", "selected_options")
     FUNCTION = "create_list"

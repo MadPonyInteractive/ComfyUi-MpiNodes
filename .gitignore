@@ -1,7 +1,6 @@
-.gitignore
+gitignore
 __pycache__/
 .vscode/
 node-publish.txt
-changes.md
 .agents/
 .claude/

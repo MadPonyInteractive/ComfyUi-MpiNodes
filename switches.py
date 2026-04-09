@@ -35,6 +35,7 @@ class MpiSwitch:
         }
 
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Select one of up to 5 inputs based on selection index"
     FUNCTION = "use_selected"
 
     def check_lazy_status(self, select: int, **kwargs):
@@ -53,6 +54,7 @@ class MpiSwitch:
 class MpiLoraSwitch(MpiSwitch):
     _type = AlwaysEqualProxy("*")
     _type_name = "lora_name"
+    DESCRIPTION = "Select one of up to 5 LoRA files"
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -86,6 +88,7 @@ class MpiLoraSwitch(MpiSwitch):
 class MpiAnySwitch(MpiSwitch):
     _type = AlwaysEqualProxy("*")
     _type_name = "any"
+    DESCRIPTION = "Select one of up to 5 inputs of any type"
     RETURN_TYPES = (_type, "INT")
     RETURN_NAMES = (_type_name, "index")
 
@@ -111,6 +114,7 @@ class MpiInvertedSwitch:
         }
 
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Route input to one of up to 5 outputs based on selection"
     FUNCTION = "use_selected"
 
     # @classmethod
@@ -131,6 +135,7 @@ class MpiAnyInvSwitch(MpiInvertedSwitch):
     _type = AlwaysEqualProxy("*")
     _types = [AlwaysEqualProxy("*") for i in range(1, 6)]
     _type_names = [f"any_{i}" for i in range(1, 6)]
+    DESCRIPTION = "Route input of any type to one of up to 5 outputs"
     RETURN_TYPES = (*_types, "INT")
     RETURN_NAMES = (*_type_names, "index")
 
@@ -139,5 +144,6 @@ class MpiStringInvSwitch(MpiInvertedSwitch):
     _type = "STRING"
     _types = ["STRING" for i in range(1, 6)]
     _type_names = [f"str_{i}" for i in range(1, 6)]
+    DESCRIPTION = "Route string input to one of up to 5 outputs"
     RETURN_TYPES = (*_types, "INT")
     RETURN_NAMES = (*_type_names, "index")

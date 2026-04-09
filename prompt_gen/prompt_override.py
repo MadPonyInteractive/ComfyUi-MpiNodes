@@ -23,6 +23,7 @@ class MpiPromptOverride:
         }
 
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Override prompt list options with custom text and optional seed"
     RETURN_TYPES = ("PROMPT_OVR",)
     RETURN_NAMES = ("override",)
     FUNCTION = "doit"
@@ -49,6 +50,7 @@ class MpiPromptOverrideSeed:
         }
 
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Override seed for prompt list randomization"
     RETURN_TYPES = ("PROMPT_OVR",)
     RETURN_NAMES = ("override",)
     FUNCTION = "doit"

@@ -21,6 +21,7 @@ class MpiDynamicCombo:
         }
 
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Select from dynamically provided options"
     RETURN_TYPES = ("STRING", "INT")
     FUNCTION = "use_selected"
 

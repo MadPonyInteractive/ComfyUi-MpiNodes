@@ -45,3 +45,24 @@ class MpiMath:
         except Exception as e:
             print(f"[MpiMath] Error evaluating expression '{math_expression}': {e}")
             return (0.0,)
+
+
+class MpiExpoFloat:
+    CATEGORY = "MpiNodes/Math"
+    DESCRIPTION = "Apply a power curve to a 0–1 float. Output = value ^ exponent"
+    RETURN_TYPES = ("FLOAT",)
+    RETURN_NAMES = ("value",)
+    FUNCTION = "apply"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "value": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 1.0, "step": 0.01}),
+                "exponent": ("FLOAT", {"default": 2.0, "min": 0.01, "max": 10.0, "step": 0.01}),
+            }
+        }
+
+    def apply(self, value, exponent):
+        result = float(value) ** float(exponent)
+        return (max(0.0, min(1.0, result)),)

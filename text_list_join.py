@@ -10,6 +10,7 @@ class MpiTextListJoin:
         }
 
     CATEGORY = "MpiNodes/TextOps"
+    DESCRIPTION = "Prepend or append text to each item in a text list"
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("updated_list",)
     OUTPUT_IS_LIST = (True,)

@@ -26,6 +26,7 @@ class MpiRoundToMultiple:
     RETURN_TYPES = ("INT",)
     RETURN_NAMES = ("rounded_value",)
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Round value to nearest multiple"
     FUNCTION = "round_to_multiple"
 
     def round_to_multiple(self, value, multiple_of, round):
@@ -60,6 +61,7 @@ class MpiRoundToMultipleRes:
     RETURN_TYPES = ("INT", "INT")
     RETURN_NAMES = ("width", "height")
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Round width and height to nearest multiple"
     FUNCTION = "round_to_multiple"
 
     def round_to_multiple(self, width, height, multiple_of, round):
@@ -160,6 +162,7 @@ class MpiString:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("string",)
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Pass through a string value"
     FUNCTION = "doit"
 
     def doit(self, string: str):
@@ -167,6 +170,8 @@ class MpiString:
 
 
 class MpiText(MpiString):
+    DESCRIPTION = "Pass through multiline text value"
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -197,6 +202,7 @@ class MpiInt:
     RETURN_TYPES = ("INT",)
     RETURN_NAMES = ("int",)
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Pass through an integer value"
     FUNCTION = "doit"
 
     def doit(self, int: int):
@@ -223,6 +229,7 @@ class MpiFloat:
     RETURN_TYPES = ("FLOAT",)
     RETURN_NAMES = ("float",)
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Pass through a float value"
     FUNCTION = "doit"
 
     def doit(self, float: float):
@@ -246,10 +253,12 @@ class MpiBool:
         }
 
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Pass through a boolean value"
     FUNCTION = "doit"
 
 
 class MpiSimpleBoolean(MpiBool):
+    DESCRIPTION = "Pass through a boolean value"
     RETURN_TYPES = ("BOOLEAN",)
     RETURN_NAMES = ("boolean",)
 
@@ -261,6 +270,7 @@ class MpiSimpleBoolean(MpiBool):
 
 
 class MpiBoolean(MpiBool):
+    DESCRIPTION = "Convert boolean to boolean, integer, and float values"
     RETURN_TYPES = ("BOOLEAN", "INT", "FLOAT")
     RETURN_NAMES = ("boolean", "int", "float")
 
@@ -310,6 +320,7 @@ class MpiBooleanCompare:
         }
 
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Compare two boolean values with multiple logic operations"
     RETURN_TYPES = ("BOOLEAN",)
     RETURN_NAMES = ("result",)
     FUNCTION = "compare"

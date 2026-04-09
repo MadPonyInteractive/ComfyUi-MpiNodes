@@ -9,6 +9,7 @@ class MpiAddImageToList:
         }
 
     CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = "Appends an image to a list of images"
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("updated_list",)
     OUTPUT_IS_LIST = (True,)

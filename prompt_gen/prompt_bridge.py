@@ -17,6 +17,7 @@ class MpiPromptBridge:
         }
 
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Pass through prompt list and seed values"
     RETURN_TYPES = ("PROMPT_LST", "INT")
     RETURN_NAMES = ("prompt_list", "seed")
     FUNCTION = "pass_it"

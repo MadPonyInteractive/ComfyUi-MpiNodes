@@ -17,6 +17,7 @@ class MpiDisplayPrompt:
         }
 
     CATEGORY = "MpiNodes/Debug"
+    DESCRIPTION = "Display prompt list contents for debugging"
     RETURN_TYPES = ("STRING", "STRING", "STRING")
     RETURN_NAMES = ("titles", "blocks", "processed_prompts")
     FUNCTION = "display"

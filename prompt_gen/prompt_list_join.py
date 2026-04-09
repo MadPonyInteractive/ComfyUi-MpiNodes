@@ -24,6 +24,7 @@ class MpiPromptListJoin:
         }
 
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Join two prompt lists or chains"
     RETURN_TYPES = ("PROMPT_LST",)
     RETURN_NAMES = ("prompt_list",)
     FUNCTION = "join_lists"

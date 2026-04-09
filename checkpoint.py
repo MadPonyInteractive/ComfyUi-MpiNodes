@@ -10,6 +10,7 @@ class MpiToChekPoint:
         }
 
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Combines model, clip, and VAE into a checkpoint"
     FUNCTION = "doit"
     RETURN_TYPES = ("MPI_CHECKPOINT",)
     RETURN_NAMES = ("mpi_checkpoint",)
@@ -28,6 +29,7 @@ class MpiFromCheckpoint:
         }
 
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Extracts model, clip, and VAE from a checkpoint"
     FUNCTION = "doit"
     RETURN_TYPES = ("MODEL", "CLIP", "VAE")
     RETURN_NAMES = ("MODEL", "CLIP", "VAE")

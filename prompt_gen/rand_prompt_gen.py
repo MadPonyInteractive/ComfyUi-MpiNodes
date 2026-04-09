@@ -132,6 +132,7 @@ class RPGPreset:
 
 class MpiRandPromptGenOrder:
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Set custom section order and transitions for random prompt generation"
     RETURN_TYPES = ("MPI_RANDPROMPT_OVR",)
     RETURN_NAMES = ("overrides",)
     FUNCTION = "doit"
@@ -193,6 +194,7 @@ class MpiRandPromptGenOverrideList:
         }
 
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Override preset list options for random prompt generation"
     RETURN_TYPES = ("MPI_RANDPROMPT_OVR",)
     RETURN_NAMES = ("overrides",)
     FUNCTION = "doit"
@@ -235,8 +237,8 @@ class MpiRandPromptGenOverrideSection:
                         "default": -1,
                         "min": -1,
                         "max": 0xFFFFFFFFFFFFFFFF,
-                        "tooltip": """If not -1 it overrides the current seed changing 
-                                the resulting random selection for the selected section. 
+                        "tooltip": """If not -1 it overrides the current seed changing
+                                the resulting random selection for the selected section.
                                 Does not affect the global seed!""",
                     },
                 ),
@@ -245,6 +247,7 @@ class MpiRandPromptGenOverrideSection:
         }
 
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Override specific section options and seed for random prompt generation"
     RETURN_TYPES = ("MPI_RANDPROMPT_OVR",)
     RETURN_NAMES = ("overrides",)
     FUNCTION = "doit"
@@ -269,6 +272,7 @@ class MpiRandPromptGenOverrideSection:
 
 class MpiRandPromptGen:
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Generate random prompts from preset lists with customizable sections"
     RETURN_TYPES = ("STRING", "STRING", "STRING", "MPI_PROMPT_PRESET")
     RETURN_NAMES = ("positive", "negative", "sections", "save_preset")
     FUNCTION = "ret_func"
@@ -503,6 +507,7 @@ class MpiRandPromptGenLoadPreset:
     """Saves a path to a temp file that can be accessed by other nodes"""
 
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Load preset folder for random prompt generation"
     RETURN_TYPES = ()
     OUTPUT_NODE = True
     FUNCTION = "doit"
@@ -569,6 +574,7 @@ class MpiRandPromptGenLoadPreset:
 
 class MpiRandPromptGenSave:
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Save random prompt preset to disk"
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("destination",)
     OUTPUT_NODE = True

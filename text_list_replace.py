@@ -10,6 +10,7 @@ class MpiTextListReplace:
         }
 
     CATEGORY = "MpiNodes/TextOps"
+    DESCRIPTION = "Find and replace text in each item of a text list"
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("updated_text",)
     OUTPUT_IS_LIST = (True,)  # Tells ComfyUI this is a list of STRING outputs

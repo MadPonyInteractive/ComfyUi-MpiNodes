@@ -58,6 +58,7 @@ class MpiPromptProcessor:
         }
 
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Process prompt lists into positive and negative prompts"
     RETURN_TYPES = ("PROMPT_LST", "STRING", "STRING", "INT", "BOOLEAN")
     RETURN_NAMES = ("prompt", "positive", "negative", "seed", "boolean")
     FUNCTION = "process"

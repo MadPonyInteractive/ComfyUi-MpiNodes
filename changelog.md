@@ -3,3 +3,4 @@
 - MpiExpoFloat - added
 - Descriptions to nodes missing them
 - fixed: MpiGridDimensions now avoids repeated tiles when fed to UltimateSDUpscale
+# Version: V1.0.6

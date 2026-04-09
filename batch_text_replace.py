@@ -4,6 +4,7 @@ import unicodedata
 
 class MpiBatchTextReplace:
     CATEGORY = "MpiNodes/TextOps"
+    DESCRIPTION = "Batch find and replace text in all .txt files within a folder"
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("status", "output_folder")
     FUNCTION = "process"

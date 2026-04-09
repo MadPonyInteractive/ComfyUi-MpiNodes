@@ -10,6 +10,7 @@ from .help_funcs import (
 
 class MpiComboMaker:
     CATEGORY = "MpiNodes/Combos"
+    DESCRIPTION = "Create, edit, or delete custom combo options"
     RETURN_TYPES = ("STRING", "JSON")
     RETURN_NAMES = ("combos", "json")
     FUNCTION = "doit"
@@ -63,6 +64,7 @@ class MpiComboMaker:
 
 class MpiCombo:
     CATEGORY = "MpiNodes/Combos"
+    DESCRIPTION = "Select from custom combo options and return selected value and index"
     RETURN_TYPES = ("STRING", "INT")
     RETURN_NAMES = ("selected", "index")
     FUNCTION = "use_selected"
@@ -101,6 +103,7 @@ def _selected(self, selected):
 
 class MpiCombo1:
     CATEGORY = "MpiNodes/Combos"
+    DESCRIPTION = "Select from combo 1 options"
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("selected_string", "selected_index", "options")
     FUNCTION = "select"
@@ -120,6 +123,7 @@ class MpiCombo1:
 
 class MpiCombo2:
     CATEGORY = "MpiNodes/Combos"
+    DESCRIPTION = "Select from combo 2 options"
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("selected_string", "selected_index", "options")
     FUNCTION = "select"
@@ -139,6 +143,7 @@ class MpiCombo2:
 
 class MpiCombo3:
     CATEGORY = "MpiNodes/Combos"
+    DESCRIPTION = "Select from combo 3 options"
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("selected_string", "selected_index", "options")
     FUNCTION = "select"
@@ -158,6 +163,7 @@ class MpiCombo3:
 
 class MpiCombo4:
     CATEGORY = "MpiNodes/Combos"
+    DESCRIPTION = "Select from combo 4 options"
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("selected_string", "selected_index", "options")
     FUNCTION = "select"
@@ -177,6 +183,7 @@ class MpiCombo4:
 
 class MpiCombo5:
     CATEGORY = "MpiNodes/Combos"
+    DESCRIPTION = "Select from combo 5 options"
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("selected_string", "selected_index", "options")
     FUNCTION = "select"
@@ -196,6 +203,7 @@ class MpiCombo5:
 
 class MpiCombo6:
     CATEGORY = "MpiNodes/Combos"
+    DESCRIPTION = "Select from combo 6 options"
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("selected_string", "selected_index", "options")
     FUNCTION = "select"
@@ -215,6 +223,7 @@ class MpiCombo6:
 
 class MpiCombo7:
     CATEGORY = "MpiNodes/Combos"
+    DESCRIPTION = "Select from combo 7 options"
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("selected_string", "selected_index", "options")
     FUNCTION = "select"
@@ -234,6 +243,7 @@ class MpiCombo7:
 
 class MpiCombo8:
     CATEGORY = "MpiNodes/Combos"
+    DESCRIPTION = "Select from combo 8 options"
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("selected_string", "selected_index", "options")
     FUNCTION = "select"
@@ -253,6 +263,7 @@ class MpiCombo8:
 
 class MpiCombo9:
     CATEGORY = "MpiNodes/Combos"
+    DESCRIPTION = "Select from combo 9 options"
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("selected_string", "selected_index", "options")
     FUNCTION = "select"
@@ -272,6 +283,7 @@ class MpiCombo9:
 
 class MpiCombo10:
     CATEGORY = "MpiNodes/Combos"
+    DESCRIPTION = "Select from combo 10 options"
     RETURN_TYPES = ("STRING", "INT", "STRING")
     RETURN_NAMES = ("selected_string", "selected_index", "options")
     FUNCTION = "select"

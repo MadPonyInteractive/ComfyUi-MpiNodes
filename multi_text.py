@@ -1,5 +1,6 @@
 class MpiMultiText:
     CATEGORY = "MpiNodes/Conditioning"
+    DESCRIPTION = "Combine multiple text inputs into one"
     FUNCTION = "doit"
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("text",)
@@ -9,6 +10,8 @@ class MpiMultiText:
 
 
 class MpiMultiTextX2(MpiMultiText):
+    DESCRIPTION = "Combine 2 text inputs"
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -20,6 +23,8 @@ class MpiMultiTextX2(MpiMultiText):
 
 
 class MpiMultiTextX3(MpiMultiText):
+    DESCRIPTION = "Combine 3 text inputs"
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -32,6 +37,8 @@ class MpiMultiTextX3(MpiMultiText):
 
 
 class MpiMultiTextX4(MpiMultiText):
+    DESCRIPTION = "Combine 4 text inputs"
+
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -45,6 +52,8 @@ class MpiMultiTextX4(MpiMultiText):
 
 
 class MpiMultiTextX5(MpiMultiText):
+    DESCRIPTION = "Combine 5 text inputs"
+
     @classmethod
     def INPUT_TYPES(cls):
         return {

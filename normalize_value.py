@@ -1,5 +1,6 @@
 class MpiNormalizeValue:
     CATEGORY = "MpiNodes/Math"
+    DESCRIPTION = "Normalize value from input range to output range with optional transforms"
     RETURN_TYPES = ("FLOAT",)
     RETURN_NAMES = ("normalized",)
     FUNCTION = "normalize"

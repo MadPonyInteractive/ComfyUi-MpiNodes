@@ -18,6 +18,7 @@ class MpiHasOptions:
         }
 
     CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Check if selected options contain any of the specified options"
     RETURN_TYPES = ("BOOLEAN",)
     RETURN_NAMES = ("boolean",)
     FUNCTION = "check"

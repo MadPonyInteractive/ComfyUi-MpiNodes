@@ -21,6 +21,7 @@ class MpiPromptChainSelector:
         }
 
     CATEGORY = "MpiNodes/PromptGen"
+    DESCRIPTION = "Select one list from a prompt chain using seed"
     RETURN_TYPES = ("PROMPT_LST", "STRING", "INT")
     RETURN_NAMES = ("prompt_list", "selected_list", "seed")
     FUNCTION = "choose_list"

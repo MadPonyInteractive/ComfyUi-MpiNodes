@@ -27,6 +27,7 @@ class MpiWanFrames:
     RETURN_TYPES = ("INT", "FLOAT", "FLOAT")
     RETURN_NAMES = ("frames", "seconds", "fps")
     CATEGORY = "MpiNodes/Wan"
+    DESCRIPTION = "Calculate duration from frame count and FPS"
     FUNCTION = "doit"
 
     def doit(self, frames: int, fps: float):
@@ -62,6 +63,7 @@ class MpiWanSeconds:
     RETURN_TYPES = ("INT", "FLOAT", "FLOAT")
     RETURN_NAMES = ("frames", "seconds", "fps")
     CATEGORY = "MpiNodes/Wan"
+    DESCRIPTION = "Calculate frame count from duration and FPS"
     FUNCTION = "doit"
 
     def doit(self, seconds: int, fps: float):
