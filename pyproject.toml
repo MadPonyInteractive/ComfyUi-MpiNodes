@@ -1,11 +1,7 @@
 [project]
 name = "ComfyUi-MpiNodes"
-description = """
-Node changes:
-- added: MpiLoraModelClip
-- added: MpiMath
-"""
-version = "1.0.4"
+description = """Mutiple utilities for CumfyUI"""
+version = "1.0.5"
 license = "LICENSE"
 
 [project.urls]

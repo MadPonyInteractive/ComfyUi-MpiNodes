@@ -43,7 +43,7 @@ from .logic import (
     MpiString,
     MpiText,
 )
-from .math import MpiMath
+from .math import MpiMath, MpiExpoFloat
 from .switches import (
     MpiStringInvSwitch,
     MpiAnyInvSwitch,
@@ -80,6 +80,7 @@ from .multi_text import (
     MpiMultiTextX5,
 )
 from .wan import MpiWanFrames, MpiWanSeconds
+from .vram import MpiClearVram
 
 # TEST NODES
 # from .dynamic_combo import MpiDynamicCombo
@@ -98,6 +99,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiPromptListSelector": MpiPromptListSelector,
     "MpiPromptProcessor": MpiPromptProcessor,
     "MpiNormalizeValue": MpiNormalizeValue,
+    "MpiExpoFloat": MpiExpoFloat,
     "MpiPromptChainSelector": MpiPromptChainSelector,
     "MpiPromptListJoin": MpiPromptListJoin,
     "MpiRoundToMultiple": MpiRoundToMultiple,
@@ -160,6 +162,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiGridDimensions": MpiGridDimensions,
     "MpiWanFrames": MpiWanFrames,
     "MpiWanSeconds": MpiWanSeconds,
+    "MpiClearVram": MpiClearVram,
     # TESTS
     # "MpiDummyToggleNode": MpiDummyToggleNode,
     # "MpiDynamicCombo": MpiDynamicCombo,
@@ -177,6 +180,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiPromptListSelector": "Mpi Prompt List Selector",
     "MpiPromptProcessor": "Mpi Prompt Processor",
     "MpiNormalizeValue": "Mpi Normalize Value",
+    "MpiExpoFloat": "Mpi Expo Float",
     "MpiPromptChainSelector": "Mpi Prompt Chain Selector",
     "MpiPromptListJoin": "Mpi Prompt List Join",
     "MpiRoundToMultiple": "Mpi Round To Multiple",
@@ -239,6 +243,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiMultiTextX5": "Mpi Multi Text x5",
     "MpiWanFrames": "Mpi Wan Frames",
     "MpiWanSeconds": "Mpi Wan Seconds",
+    "MpiClearVram": "Mpi Clear Vram",
 }
 
 WEB_DIRECTORY = "./web"
