@@ -2,7 +2,8 @@
 
 A ComfyUI custom node pack by [Mad Pony Interactive](https://github.com/MadPonyInteractive) with ~60 utilities for logic, math, prompt generation, image operations, model management, and workflow automation.
 
-[![Registry](https://registry.comfy.org/publishers/mad-pony-interactive/nodes/ComfyUi-MpiNodes)](https://registry.comfy.org)
+[![Registry](https://img.shields.io/badge/Comfy%20Registry-mad--pony--interactive-blue)](https://registry.comfy.org/publishers/mad-pony-interactive/nodes/ComfyUi-MpiNodes)
+
 
 ---
 
