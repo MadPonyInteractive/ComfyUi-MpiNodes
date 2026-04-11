@@ -1,6 +1,6 @@
 [project]
 name = "ComfyUi-MpiNodes"
-description = """Mutiple utilities for CumfyUI"""
+description = """Multiple utilities for ComfyUI"""
 version = "1.0.5"
 license = "LICENSE"
 
