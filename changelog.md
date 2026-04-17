@@ -4,3 +4,5 @@
 - Descriptions to nodes missing them
 - fixed: MpiGridDimensions now avoids repeated tiles when fed to UltimateSDUpscale
 # Version: V1.0.6
+- MpiLogger - added
+# Version: V1.0.7
