@@ -44,6 +44,7 @@ Primitive operations for comparisons, type conversions, rounding, and boolean lo
 | **MpiBoolean** | Pass through a boolean → outputs boolean, int, and float. |
 | **MpiSimpleBoolean** | Pass through a boolean value only. |
 | **MpiFloat / MpiInt / MpiString / MpiText** | Pass-through nodes for float, int, string (single-line), and text (multiline) values. |
+| **MpiLogger** | Log any input value to the console with a prefix. |
 
 ---
 

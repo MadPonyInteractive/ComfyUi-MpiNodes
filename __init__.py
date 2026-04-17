@@ -19,6 +19,7 @@ from .prompt_gen.rand_prompt_gen import (
 )
 from .batch_text_replace import MpiBatchTextReplace
 from .add_image_to_list import MpiAddImageToList
+from .logger import MpiLogger
 from .img import (
     MpiBboxToMask,
     MpiScaledDimensions,
@@ -92,6 +93,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiBatchTextReplace": MpiBatchTextReplace,
     "MpiBboxToMask": MpiBboxToMask,
     "MpiAddImageToList": MpiAddImageToList,
+    "MpiLogger": MpiLogger,
     "MpiScaledDimensions": MpiScaledDimensions,
     "MpiTextListReplace": MpiTextListReplace,
     "MpiTextListJoin": MpiTextListJoin,
@@ -173,6 +175,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiBatchTextReplace": "Mpi Batch Text Replace",
     "MpiBboxToMask": "Mpi Bbox To Mask",
     "MpiAddImageToList": "Mpi Add Image to List",
+    "MpiLogger": "Mpi Logger",
     "MpiScaledDimensions": "Mpi Scaled Dimensions",
     "MpiTextListReplace": "Mpi Text List Replace",
     "MpiTextListJoin": "Mpi Text List Join",
