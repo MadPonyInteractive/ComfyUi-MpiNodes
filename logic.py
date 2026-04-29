@@ -344,3 +344,28 @@ class MpiBooleanCompare:
             return (not (a and b),)
         else:
             raise ValueError(f"Unsupported mode: {mode}")
+
+
+class MpiListCount:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "list_input": ("*", {"forceInput": True}),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "BOOLEAN")
+    RETURN_NAMES = ("count", "has_items")
+    CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Count entries in a list of any type. Outputs count and a boolean true if list is non-empty."
+    FUNCTION = "count"
+    INPUT_IS_LIST = True
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, input_types):
+        return True
+
+    def count(self, list_input):
+        n = len(list_input)
+        return (n, n > 0)

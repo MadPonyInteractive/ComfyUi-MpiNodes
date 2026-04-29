@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUi-MpiNodes"
 description = """Multiple utilities for ComfyUI"""
-version = "1.0.6"
+version = "1.0.7"
 license = "LICENSE"
 
 [project.urls]
@@ -14,5 +14,5 @@ DisplayName = "ComfyUi-MpiNodes"
 Icon = ""
 includes = [] 
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
-# trigger workflow
+# trigger workflow v1.0.7
 

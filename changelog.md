@@ -6,3 +6,5 @@
 # Version: V1.0.6
 - MpiLogger - added
 # Version: V1.0.7
+- MpiListCount - added
+# Version: V1.0.8
