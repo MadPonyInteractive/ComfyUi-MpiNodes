@@ -4,3 +4,5 @@ __pycache__/
 node-publish.txt
 .agents/
 .claude/
+claude.md
+memory.md
