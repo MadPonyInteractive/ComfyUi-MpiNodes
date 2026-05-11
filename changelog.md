@@ -8,3 +8,5 @@
 # Version: V1.0.7
 - MpiListCount - added
 # Version: V1.0.8
+- MpiListRange - added
+# Version: V1.0.9

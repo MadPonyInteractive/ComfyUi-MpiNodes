@@ -369,3 +369,90 @@ class MpiListCount:
     def count(self, list_input):
         n = len(list_input)
         return (n, n > 0)
+
+
+class MpiListRange:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "list_input": ("*", {"forceInput": True}),
+                "start": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": -0xFFFFFFFFFFFFFFFF,
+                        "max": 0xFFFFFFFFFFFFFFFF,
+                        "tooltip": "Start index (inclusive). Negative counts from end.",
+                    },
+                ),
+                "end": (
+                    "INT",
+                    {
+                        "default": -1,
+                        "min": -0xFFFFFFFFFFFFFFFF,
+                        "max": 0xFFFFFFFFFFFFFFFF,
+                        "tooltip": "End index (inclusive). Negative counts from end. -1 = last item.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("*", "INT")
+    RETURN_NAMES = ("list", "count")
+    CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Output a sub-range of any list. Inclusive start/end, negative indices count from end."
+    FUNCTION = "slice_range"
+    INPUT_IS_LIST = True
+    OUTPUT_IS_LIST = (True, False)
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, input_types):
+        return True
+
+    def slice_range(self, list_input, start, end):
+        import torch  # type: ignore
+
+        s = start[0] if isinstance(start, list) else start
+        e = end[0] if isinstance(end, list) else end
+
+        # Image batch arrives as a single-element list wrapping a tensor
+        # of shape [B, H, W, C]. Slice along the batch dim instead of the
+        # Python list, otherwise we'd always return the whole batch.
+        if (
+            len(list_input) == 1
+            and isinstance(list_input[0], torch.Tensor)
+            and list_input[0].ndim >= 3
+        ):
+            batch = list_input[0]
+            n = batch.shape[0]
+            if n == 0:
+                return ([batch], 0)
+            if s < 0:
+                s = n + s
+            if e < 0:
+                e = n + e
+            s = max(0, min(s, n - 1))
+            e = max(0, min(e, n - 1))
+            if e < s:
+                return ([batch[0:0]], 0)
+            sliced = batch[s : e + 1]
+            return ([sliced], sliced.shape[0])
+
+        n = len(list_input)
+        if n == 0:
+            return ([], 0)
+
+        if s < 0:
+            s = n + s
+        if e < 0:
+            e = n + e
+
+        s = max(0, min(s, n - 1))
+        e = max(0, min(e, n - 1))
+
+        if e < s:
+            return ([], 0)
+
+        sliced = list_input[s : e + 1]
+        return (sliced, len(sliced))

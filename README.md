@@ -45,6 +45,7 @@ Primitive operations for comparisons, type conversions, rounding, and boolean lo
 | **MpiSimpleBoolean** | Pass through a boolean value only. |
 | **MpiFloat / MpiInt / MpiString / MpiText** | Pass-through nodes for float, int, string (single-line), and text (multiline) values. |
 | **MpiListCount** | Count entries in a list of any type. Outputs `count` (INT) and `has_items` (BOOLEAN, true if non-empty). |
+| **MpiListRange** | Output a sub-range of any list using inclusive `start`/`end` indices. Negative indices count from the end. Outputs sliced list and its count. |
 | **MpiLogger** | Log any input value to the console with a prefix. |
 
 ---

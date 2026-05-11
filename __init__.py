@@ -44,6 +44,7 @@ from .logic import (
     MpiString,
     MpiText,
     MpiListCount,
+    MpiListRange,
 )
 from .math import MpiMath, MpiExpoFloat
 from .switches import (
@@ -118,6 +119,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiString": MpiString,
     "MpiText": MpiText,
     "MpiListCount": MpiListCount,
+    "MpiListRange": MpiListRange,
     "MpiDisplayPrompt": MpiDisplayPrompt,
     "MpiHasOptions": MpiHasOptions,
     "MpiPromptBridge": MpiPromptBridge,
@@ -201,6 +203,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiString": "Mpi String",
     "MpiText": "Mpi Text",
     "MpiListCount": "Mpi List Count",
+    "MpiListRange": "Mpi List Range",
     "MpiDisplayPrompt": "Mpi Prompt Display",
     "MpiHasOptions": "Mpi Has Options",
     "MpiPromptBridge": "Mpi Prompt Bridge",
