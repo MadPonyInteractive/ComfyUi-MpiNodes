@@ -1,4 +1,4 @@
-import hashlib, re, random, os, json, shutil, math
+import hashlib, re, random, os, json, shutil, math, subprocess
 import comfy  # type: ignore
 import torch  # type:ignore
 import folder_paths as comfy_paths  # type: ignore
@@ -278,3 +278,94 @@ def merge_unique_by_key(list1, list2, key="title"):
     seen_titles = {d[key] for d in list1}
     combined = list1 + [d for d in list2 if d[key] not in seen_titles]
     return combined
+
+
+def resolve_video_path(path):
+    """Resolve a video path string the way VHS_LoadVideoPath does.
+
+    The incoming path may be an absolute path (local runs) or a bare basename
+    (remote engines upload to ComfyUI's input dir and inject only the filename).
+    Returns the first existing resolution, falling back to the raw path.
+    """
+    if not path:
+        return path
+
+    if os.path.isabs(path) and os.path.exists(path):
+        return path
+
+    # Mirror VHS resolution: try the annotated-filepath helper, then the
+    # plain input directory.
+    try:
+        annotated = comfy_paths.get_annotated_filepath(path)
+        if annotated and os.path.exists(annotated):
+            return annotated
+    except Exception:
+        pass
+
+    candidate = os.path.join(comfy_paths.get_input_directory(), path)
+    if os.path.exists(candidate):
+        return candidate
+
+    return path
+
+
+def find_ffmpeg():
+    """Locate an ffmpeg executable, mirroring VHS_LoadVideoPath's resolution.
+
+    ComfyUI portable does NOT ship ffprobe and rarely has either binary on
+    PATH; what it does have is the ffmpeg bundled by imageio-ffmpeg (the same
+    one VHS uses). So detect audio with ffmpeg, not ffprobe.
+
+    Order: VHS_FORCE_FFMPEG_PATH env -> imageio-ffmpeg bundle -> PATH. Returns
+    None if nothing is found.
+    """
+    forced = os.environ.get("VHS_FORCE_FFMPEG_PATH")
+    if forced:
+        return forced
+
+    try:
+        import imageio_ffmpeg  # type: ignore
+
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        pass
+
+    return shutil.which("ffmpeg")
+
+
+def video_has_audio_stream(path):
+    """Return True if the video file at `path` contains an audio stream.
+
+    Uses ffmpeg (inspect-only here, encoder/GPU-agnostic) to read container
+    metadata. ffmpeg with no output target errors out but prints the input's
+    stream layout to stderr; an audio track shows up as a "Stream ... Audio:"
+    line. Detection reads the FILE, not an AUDIO object, because lazy audio
+    maps report not-None even when no audio track exists.
+
+    Defaults to False if the path is missing, ffmpeg is unavailable, or the
+    probe errors — safer to produce video-only output than to crash a workflow
+    on a phantom audio input.
+    """
+    resolved = resolve_video_path(path)
+    if not resolved or not os.path.exists(resolved):
+        return False
+
+    ffmpeg = find_ffmpeg()
+    if not ffmpeg:
+        print("[MpiNodes] no ffmpeg found; cannot check for audio")
+        return False
+
+    try:
+        # `-i <file>` with no output makes ffmpeg dump stream info to stderr
+        # and exit non-zero ("At least one output file must be specified") —
+        # expected, we only want the printed stream layout.
+        result = subprocess.run(
+            [ffmpeg, "-hide_banner", "-i", resolved],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return "Audio:" in result.stderr
+    except Exception as e:
+        print(f"[MpiNodes] ffmpeg audio check failed for {resolved}: {e}")
+        return False

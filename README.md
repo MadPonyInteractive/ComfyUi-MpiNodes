@@ -163,6 +163,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | Node | Description |
 |---|---|
 | **MpiClearVram** | Offload all models from VRAM to RAM, clear GPU cache, and run garbage collection. Passes through a value to chain in workflows. |
+| **MpiHasAudio** | Check if a video file (by path) contains an audio stream via ffprobe. Outputs a boolean to gate an audio wire into CreateVideo. |
 
 ---
 

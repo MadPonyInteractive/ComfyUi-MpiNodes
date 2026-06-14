@@ -12,3 +12,4 @@
 # Version: V1.0.9
 - fixed: MpiMaskDebugInfo now has a display name (was showing raw class name)
 - fixed: removed orphan MpiChoiceSelector / MpiPresetSelector display entries (no backing class)
+- MpiHasAudio - added
