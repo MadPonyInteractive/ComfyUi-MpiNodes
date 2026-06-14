@@ -9,7 +9,8 @@
 - MpiListCount - added
 # Version: V1.0.8
 - MpiListRange - added
-# Version: V1.0.9
+# Version: V1.1.0
 - fixed: MpiMaskDebugInfo now has a display name (was showing raw class name)
 - fixed: removed orphan MpiChoiceSelector / MpiPresetSelector display entries (no backing class)
 - MpiHasAudio - added
+# Version: V1.1.1
