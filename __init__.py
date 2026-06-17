@@ -27,6 +27,7 @@ from .img import (
     MpiGetImageAtIndex,
     MpiMaskDebugInfo,
     MpiGridDimensions,
+    MpiUpscaleModelScale,
 )
 from .text_list_replace import MpiTextListReplace
 from .text_list_join import MpiTextListJoin
@@ -146,6 +147,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiLoraModelClip": MpiLoraModelClip,
     "MpiAspectRatio": MpiAspectRatio,
     "MpiGetImageAtIndex": MpiGetImageAtIndex,
+    "MpiUpscaleModelScale": MpiUpscaleModelScale,
     "MpiPromptOverride": MpiPromptOverride,
     "MpiPromptOverrideSeed": MpiPromptOverrideSeed,
     "MpiJsonLoad": MpiJsonLoad,
@@ -230,6 +232,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiLoraModelClip": "Mpi Lora Model Clip",
     "MpiAspectRatio": "Mpi Get Aspect Ratio",
     "MpiGetImageAtIndex": "Mpi Get Image At Index",
+    "MpiUpscaleModelScale": "Mpi Upscale Model Scale",
     "MpiGridDimensions": "Mpi Grid Dimensions",
     "MpiPromptOverride": "Mpi Prompt Override",
     "MpiPromptOverrideSeed": "Mpi Prompt Override Seed",

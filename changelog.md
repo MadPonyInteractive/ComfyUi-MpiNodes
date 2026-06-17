@@ -14,3 +14,5 @@
 - fixed: removed orphan MpiChoiceSelector / MpiPresetSelector display entries (no backing class)
 - MpiHasAudio - added
 # Version: V1.1.1
+- MpiUpscaleModelScale - added
+# Version: V1.1.2

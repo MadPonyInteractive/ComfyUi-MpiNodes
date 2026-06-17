@@ -95,6 +95,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | **MpiGetImageAtIndex** | Return the image at a specified index from a batch. Supports negative indexing (-1 = last). |
 | **MpiBboxToMask** | Convert bounding boxes (xyxy or xywh format) to mask tensors. |
 | **MpiGridDimensions** | Calculate grid dimensions and corrected source size for perfect tiling — avoids repeated tiles when fed to UltimateSDUpscale. Has auto mode. |
+| **MpiUpscaleModelScale** | Read an upscale model's native scale (1x/2x/4x/8x) from its descriptor metadata instead of the filename. Outputs INT and FLOAT. fallback_scale used only if metadata is absent. |
 | **MpiMaskDebugInfo** | Print mask shape, dtype, and device info to the console for debugging. |
 | **MpiAddImageToList** | Append an image to a list of images. |
 

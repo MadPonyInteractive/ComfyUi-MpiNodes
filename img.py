@@ -290,3 +290,66 @@ Negative values start counting from the last image.
         chosen_images = images[indices_tensor]
 
         return (chosen_images, index)
+
+
+def read_upscale_model_scale(upscale_model, fallback):
+    """Read native scale from a spandrel ImageModelDescriptor (the UPSCALE_MODEL
+    object from ComfyUI's UpscaleModelLoader). Uses fallback when metadata is
+    absent. Raises on a non-positive result to keep callers safe from
+    division-by-zero downstream."""
+    scale = getattr(upscale_model, "scale", None)
+    if scale is None:
+        scale = fallback
+    scale = int(scale)
+    if scale <= 0:
+        raise ValueError(
+            f"Upscale model scale must be positive, got {scale}. "
+            "Set a valid fallback_scale (>= 1)."
+        )
+    return scale
+
+
+class MpiUpscaleModelScale:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "upscale_model": ("UPSCALE_MODEL",),
+                "fallback_scale": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 64,
+                        "tooltip": "Used only if the model exposes no .scale metadata",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "FLOAT")
+    RETURN_NAMES = ("scale_int", "scale_float")
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = (
+        "Read an upscale model's native scale (1x/2x/4x/8x) from its descriptor "
+        "metadata instead of parsing the filename. Outputs INT and FLOAT."
+    )
+    FUNCTION = "get_scale"
+
+    def get_scale(self, upscale_model, fallback_scale):
+        scale = read_upscale_model_scale(upscale_model, fallback_scale)
+        return (scale, float(scale))
+
+
+if __name__ == "__main__":
+    class _M:
+        def __init__(self, s):
+            self.scale = s
+    assert read_upscale_model_scale(_M(4), 1) == 4          # reads metadata
+    assert read_upscale_model_scale(object(), 2) == 2       # fallback when missing
+    try:
+        read_upscale_model_scale(_M(0), 0)                  # non-positive -> raise
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
+    print("ok")
