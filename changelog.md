@@ -16,3 +16,5 @@
 # Version: V1.1.1
 - MpiUpscaleModelScale - added
 # Version: V1.1.2
+- MpiReroute - added
+- MpiConditioningReroute - added

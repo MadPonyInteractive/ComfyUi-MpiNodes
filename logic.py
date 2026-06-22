@@ -371,6 +371,49 @@ class MpiListCount:
         return (n, n > 0)
 
 
+class MpiReroute:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "any": ("*", {"forceInput": True}),
+            },
+        }
+
+    RETURN_TYPES = ("*",)
+    RETURN_NAMES = ("any",)
+    CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Pass any value through unchanged. Rename the node title for a labelled reroute."
+    FUNCTION = "doit"
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, input_types):
+        return True
+
+    def doit(self, any):
+        return (any,)
+
+
+class MpiConditioningReroute:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "positive": ("CONDITIONING", {"forceInput": True}),
+                "negative": ("CONDITIONING", {"forceInput": True}),
+            },
+        }
+
+    RETURN_TYPES = ("CONDITIONING", "CONDITIONING")
+    RETURN_NAMES = ("positive", "negative")
+    CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Pass positive and negative conditioning through unchanged. A labelled conditioning reroute."
+    FUNCTION = "doit"
+
+    def doit(self, positive, negative):
+        return (positive, negative)
+
+
 class MpiListRange:
     @classmethod
     def INPUT_TYPES(cls):
