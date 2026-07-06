@@ -168,6 +168,12 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | **MpiClearVram** | Offload all models from VRAM to RAM, clear GPU cache, and run garbage collection. Passes through a value to chain in workflows. |
 | **MpiHasAudio** | Check if a video file (by path) contains an audio stream via ffmpeg. Outputs a boolean to gate an audio wire into CreateVideo. |
 
+### Video
+
+| Node | Description |
+|---|---|
+| **MpiSaveVideo** | Fast save-video node with no in-graph preview and optional audio. Encodes an IMAGE frame batch (+ optional AUDIO) to a single .mp4 in one libx264 pass, on the engine — much faster than CreateVideo+SaveVideo for video export, and remote gens transfer only the final mp4. Toggle audio with the `use_audio` boolean; GPU-agnostic (no nvenc). |
+
 ---
 
 ## License
