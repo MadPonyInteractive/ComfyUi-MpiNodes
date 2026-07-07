@@ -269,6 +269,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 }
 
 WEB_DIRECTORY = "./web"
+
+# Server routes (not workflow nodes) — importing registers them on PromptServer
+# at startup. See routes.py: POST /mpi/reload-extra-paths (Cubric Vision MPI-219).
+from . import routes  # noqa: E402,F401
+
 __all__ = [
     "NODE_CLASS_MAPPINGS",
     "NODE_DISPLAY_NAME_MAPPINGS",

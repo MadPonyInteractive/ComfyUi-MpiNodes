@@ -21,3 +21,5 @@
 # Version: V1.1.3
 - MpiSaveVideo - added: fast save-video node, no in-graph preview, optional audio (use_audio toggle) — faster video export for certain workflows
 # Version: V1.1.4
+- server route: added POST /mpi/reload-extra-paths — re-reads extra_model_paths.yaml at runtime so a model folder added mid-session registers without restarting ComfyUI (Cubric Vision MPI-219)
+# Version: V1.1.5
