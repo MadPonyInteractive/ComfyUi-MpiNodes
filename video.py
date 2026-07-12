@@ -47,16 +47,12 @@ def _audio_has_samples(audio):
     waveform. Encoding that stalls the video-only path (and drove the
     invert-switch + double-node workaround). Gate on actual samples instead.
     """
-    # audio may be None (unconnected) or an ExecutionBlocker (dead branch of a
-    # router like MpiIfElseInverted). Only a real AUDIO dict has "waveform".
-    if not isinstance(audio, dict) or audio.get("waveform") is None:
-        return False
-    wf = audio["waveform"]
+    # audio may be None (unconnected), an ExecutionBlocker (dead branch of a
+    # router), a plain dict, or VHS's LazyAudioMap (a Mapping, not a dict).
+    # Don't gate on isinstance(dict) — just try to read the waveform.
     try:
-        if wf.numel() == 0:
-            return False
-        # all-zero waveform == silence from a placeholder source -> treat as none
-        return bool(wf.abs().max().item() > 0)
+        wf = audio["waveform"]
+        return wf is not None and wf.numel() > 0
     except Exception:
         return False
 
@@ -143,11 +139,11 @@ class MpiSaveVideo:
         frames = images.clamp(0.0, 1.0).mul(255.0).round().to("cpu", torch.uint8).contiguous()
 
         out_dir = folder_paths.get_output_directory()
-        full_prefix, _, counter, subfolder, _ = folder_paths.get_save_image_path(
+        full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(
             filename_prefix, out_dir, w, h
         )
-        name = f"{os.path.basename(full_prefix)}_{counter:05}.mp4"
-        out_path = os.path.join(os.path.dirname(full_prefix), name)
+        name = f"{filename}_{counter:05}.mp4"
+        out_path = os.path.join(full_output_folder, name)
 
         cmd = [
             ffmpeg, "-y",

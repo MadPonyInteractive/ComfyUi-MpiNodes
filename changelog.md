@@ -23,3 +23,6 @@
 # Version: V1.1.4
 - server route: added POST /mpi/reload-extra-paths — re-reads extra_model_paths.yaml at runtime so a model folder added mid-session registers without restarting ComfyUI (Cubric Vision MPI-219)
 # Version: V1.1.5
+- fixed: MpiSaveVideo now writes the filename_prefix (was saving `_00001.mp4` with no prefix — used the wrong return value from get_save_image_path)
+- fixed: MpiSaveVideo now encodes audio from VHS/LazyAudioMap sources (was checking isinstance(dict), which a LazyAudioMap fails, so no audio track was ever written)
+# Version: V1.1.6
