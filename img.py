@@ -1,6 +1,11 @@
 import torch  # type:ignore
 from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple
 import math
+import os
+import numpy as np  # type: ignore
+from PIL import Image, ImageOps  # type: ignore
+from comfy_execution.graph import ExecutionBlocker  # type: ignore
+from nodes import PreviewImage  # type: ignore
 
 
 def get_corrected_source_dimensions(
@@ -290,6 +295,68 @@ Negative values start counting from the last image.
         chosen_images = images[indices_tensor]
 
         return (chosen_images, index)
+
+
+def load_image_from_path(path):
+    """Load an image file into a ComfyUI IMAGE tensor + MASK, the same way
+    ComfyUI's built-in LoadImage does (EXIF-transpose, RGB, /255, alpha->mask)."""
+    img = Image.open(path)
+    img = ImageOps.exif_transpose(img)
+    if img.mode == "I":
+        img = img.point(lambda i: i * (1 / 255))
+    rgb = img.convert("RGB")
+    arr = np.array(rgb).astype(np.float32) / 255.0
+    image = torch.from_numpy(arr)[None,]
+    if "A" in img.getbands():
+        mask = np.array(img.getchannel("A")).astype(np.float32) / 255.0
+        mask = 1.0 - torch.from_numpy(mask)
+    else:
+        mask = torch.zeros((rgb.height, rgb.width), dtype=torch.float32)
+    return image, mask.unsqueeze(0)
+
+
+class MpiLoadImageFromPath(PreviewImage):
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "string": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "tooltip": "Image file path. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
+                    },
+                ),
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
+    RETURN_NAMES = ("image", "mask", "width", "height")
+    OUTPUT_NODE = True
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = (
+        "Load an image from a file path and preview it in-graph. Also outputs "
+        "width and height. If the path is empty, downstream execution is "
+        "blocked (no need for a separate blocker node)."
+    )
+    FUNCTION = "load"
+
+    def load(self, string, prompt=None, extra_pnginfo=None):
+        path = (string or "").strip()
+        if not path or not os.path.isfile(path):
+            blocked = ExecutionBlocker(None)
+            return {"ui": {"images": []}, "result": (blocked, blocked, 0, 0)}
+
+        image, mask = load_image_from_path(path)
+        _, h, w, _ = image.shape
+        # Reuse PreviewImage.save_images for the in-graph thumbnail.
+        preview = self.save_images(image, prompt=prompt, extra_pnginfo=extra_pnginfo)
+        return {"ui": preview["ui"], "result": (image, mask, w, h)}
 
 
 def read_upscale_model_scale(upscale_model, fallback):

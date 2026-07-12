@@ -4,7 +4,11 @@ import tempfile
 
 import folder_paths  # type: ignore
 
-from .help_funcs import find_ffmpeg, video_has_audio_stream
+from .help_funcs import (
+    find_ffmpeg,
+    video_has_audio_stream,
+    resolve_video_path,
+)
 
 
 class MpiHasAudio:
@@ -84,6 +88,144 @@ def _write_wav(waveform, sample_rate, path):
         w.setsampwidth(2)
         w.setframerate(int(sample_rate))
         w.writeframes(pcm.tobytes())
+
+
+def _probe_video_meta(ffmpeg, path):
+    """Read width, height and average fps from ffmpeg's stderr stream dump.
+
+    `ffmpeg -i <file>` with no output exits non-zero but prints the stream
+    layout to stderr — we parse the Video line from that. No ffprobe needed
+    (portable ComfyUI doesn't ship it). Returns (w, h, fps); fps falls back to
+    24.0 if unparseable.
+    """
+    import re
+
+    proc = subprocess.run([ffmpeg, "-i", path], capture_output=True)
+    err = proc.stderr.decode("utf-8", "replace")
+
+    w = h = 0
+    m = re.search(r"Video:.*?(\d{2,5})x(\d{2,5})", err)
+    if m:
+        w, h = int(m.group(1)), int(m.group(2))
+
+    fps = 24.0
+    m = re.search(r"(\d+(?:\.\d+)?)\s*fps", err)
+    if m:
+        fps = float(m.group(1))
+
+    return w, h, fps
+
+
+def _decode_frames(ffmpeg, path, w, h):
+    """Decode all frames to an IMAGE tensor [N, H, W, 3] in 0..1 via a raw
+    rgb24 pipe. One ffmpeg pass, no intermediate files, no preview."""
+    import torch  # type: ignore
+    import numpy as np  # type: ignore
+
+    proc = subprocess.run(
+        [ffmpeg, "-i", path, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
+        capture_output=True,
+    )
+    if proc.returncode != 0 or not proc.stdout:
+        tail = proc.stderr.decode("utf-8", "replace")[-2000:]
+        raise RuntimeError(f"[MpiLoadVideo] ffmpeg decode failed:\n{tail}")
+
+    frame_bytes = w * h * 3
+    n = len(proc.stdout) // frame_bytes
+    arr = np.frombuffer(proc.stdout[: n * frame_bytes], dtype=np.uint8)
+    arr = arr.reshape(n, h, w, 3).astype(np.float32) / 255.0
+    return torch.from_numpy(arr), n
+
+
+def _load_audio(ffmpeg, path):
+    """Extract audio as a ComfyUI AUDIO dict, or None if the file has no audio
+    track. Decodes to a temp WAV then reads it back."""
+    import torch  # type: ignore
+
+    if not video_has_audio_stream(path):
+        return None
+
+    wav_path = tempfile.mktemp(suffix=".wav")
+    try:
+        proc = subprocess.run(
+            [ffmpeg, "-y", "-i", path, "-vn", "-acodec", "pcm_s16le", wav_path],
+            capture_output=True,
+        )
+        if proc.returncode != 0 or not os.path.exists(wav_path):
+            return None
+
+        import wave
+
+        with wave.open(wav_path, "rb") as wf:
+            ch = wf.getnchannels()
+            sr = wf.getframerate()
+            frames = wf.readframes(wf.getnframes())
+
+        import numpy as np  # type: ignore
+
+        pcm = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        pcm = pcm.reshape(-1, ch).transpose(1, 0)  # [channels, samples]
+        waveform = torch.from_numpy(pcm).unsqueeze(0)  # [1, channels, samples]
+        return {"waveform": waveform, "sample_rate": sr}
+    finally:
+        if os.path.exists(wav_path):
+            os.remove(wav_path)
+
+
+class MpiLoadVideo:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "string": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "tooltip": "Video file path. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "INT", "FLOAT", "INT", "INT")
+    RETURN_NAMES = (
+        "images",
+        "audio",
+        "fps",
+        "frame_count",
+        "duration",
+        "width",
+        "height",
+    )
+    CATEGORY = "MpiNodes/Video"
+    DESCRIPTION = (
+        "Fast, no-frills video loader: decodes frames + audio and reports "
+        "source info (fps, frame_count, duration, width, height) in one "
+        "ffmpeg pass. No in-graph preview and no VHS param surface, so it "
+        "loads much faster than Load Video (Path). Input is named 'string' to "
+        "match MpiString / MpiAnyChecker. Empty/missing path blocks downstream."
+    )
+    FUNCTION = "load"
+
+    def load(self, string):
+        from comfy_execution.graph import ExecutionBlocker  # type: ignore
+
+        path = resolve_video_path((string or "").strip())
+        ffmpeg = find_ffmpeg()
+        if not path or not os.path.isfile(path) or not ffmpeg:
+            b = ExecutionBlocker(None)
+            return (b, b, 0.0, 0, 0.0, 0, 0)
+
+        w, h, fps = _probe_video_meta(ffmpeg, path)
+        if w == 0 or h == 0:
+            b = ExecutionBlocker(None)
+            return (b, b, 0.0, 0, 0.0, 0, 0)
+
+        images, n = _decode_frames(ffmpeg, path, w, h)
+        audio = _load_audio(ffmpeg, path)
+        duration = n / fps if fps else 0.0
+        return (images, audio, fps, n, duration, w, h)
 
 
 class MpiSaveVideo:

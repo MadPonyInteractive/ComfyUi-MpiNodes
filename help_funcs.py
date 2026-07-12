@@ -6,6 +6,30 @@ import folder_paths as comfy_paths  # type: ignore
 _lora_cache = {}
 
 
+def is_empty_value(value):
+    """True if value is 'empty' for any ComfyUI type.
+
+    Empty: None, empty string/list/tuple/dict, zero-element tensor
+    (IMAGE/MASK/LATENT with 0 batch), AUDIO with an empty waveform.
+    Not empty: 0, 0.0, False, and any populated value.
+    """
+    # ponytail: falsiness would wrongly treat 0/0.0/False as empty.
+    if value is None:
+        return True
+    # tensors: empty = zero elements. 0-d scalar tensors have numel 1 (len() would crash).
+    if torch.is_tensor(value):
+        return value.numel() == 0
+    # AUDIO is {"waveform": tensor, "sample_rate": int}; empty = empty waveform.
+    if isinstance(value, dict):
+        wf = value.get("waveform")
+        if torch.is_tensor(wf):
+            return wf.numel() == 0
+        return len(value) == 0
+    if hasattr(value, "__len__"):
+        return len(value) == 0
+    return False
+
+
 def round_to_multiple(value, multiple_of, round):
     if multiple_of <= 0:
         return (value,)  # avoid division by zero

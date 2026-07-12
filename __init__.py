@@ -28,6 +28,7 @@ from .img import (
     MpiMaskDebugInfo,
     MpiGridDimensions,
     MpiUpscaleModelScale,
+    MpiLoadImageFromPath,
 )
 from .text_list_replace import MpiTextListReplace
 from .text_list_join import MpiTextListJoin
@@ -47,6 +48,9 @@ from .logic import (
     MpiListCount,
     MpiListRange,
     MpiReroute,
+    MpiBlockIfEmpty,
+    MpiAnyChecker,
+    MpiSeedPassthrough,
     MpiConditioningReroute,
 )
 from .math import MpiMath, MpiExpoFloat
@@ -87,7 +91,7 @@ from .multi_text import (
 )
 from .wan import MpiWanFrames, MpiWanSeconds
 from .vram import MpiClearVram
-from .video import MpiHasAudio, MpiSaveVideo
+from .video import MpiHasAudio, MpiSaveVideo, MpiLoadVideo
 
 # TEST NODES
 # from .dynamic_combo import MpiDynamicCombo
@@ -125,6 +129,9 @@ NODE_CLASS_MAPPINGS = {
     "MpiListCount": MpiListCount,
     "MpiListRange": MpiListRange,
     "MpiReroute": MpiReroute,
+    "MpiBlockIfEmpty": MpiBlockIfEmpty,
+    "MpiAnyChecker": MpiAnyChecker,
+    "MpiSeedPassthrough": MpiSeedPassthrough,
     "MpiConditioningReroute": MpiConditioningReroute,
     "MpiDisplayPrompt": MpiDisplayPrompt,
     "MpiHasOptions": MpiHasOptions,
@@ -152,6 +159,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiAspectRatio": MpiAspectRatio,
     "MpiGetImageAtIndex": MpiGetImageAtIndex,
     "MpiUpscaleModelScale": MpiUpscaleModelScale,
+    "MpiLoadImageFromPath": MpiLoadImageFromPath,
     "MpiPromptOverride": MpiPromptOverride,
     "MpiPromptOverrideSeed": MpiPromptOverrideSeed,
     "MpiJsonLoad": MpiJsonLoad,
@@ -178,6 +186,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiClearVram": MpiClearVram,
     "MpiHasAudio": MpiHasAudio,
     "MpiSaveVideo": MpiSaveVideo,
+    "MpiLoadVideo": MpiLoadVideo,
     # TESTS
     # "MpiDummyToggleNode": MpiDummyToggleNode,
     # "MpiDynamicCombo": MpiDynamicCombo,
@@ -214,6 +223,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiListCount": "Mpi List Count",
     "MpiListRange": "Mpi List Range",
     "MpiReroute": "Mpi Reroute",
+    "MpiBlockIfEmpty": "Mpi Any Blocker",
+    "MpiAnyChecker": "Mpi Any Checker",
+    "MpiSeedPassthrough": "Mpi Seed Passthrough",
     "MpiConditioningReroute": "Mpi Conditioning Reroute",
     "MpiDisplayPrompt": "Mpi Prompt Display",
     "MpiHasOptions": "Mpi Has Options",
@@ -240,6 +252,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiAspectRatio": "Mpi Get Aspect Ratio",
     "MpiGetImageAtIndex": "Mpi Get Image At Index",
     "MpiUpscaleModelScale": "Mpi Upscale Model Scale",
+    "MpiLoadImageFromPath": "Mpi Load Image From Path",
     "MpiGridDimensions": "Mpi Grid Dimensions",
     "MpiPromptOverride": "Mpi Prompt Override",
     "MpiPromptOverrideSeed": "Mpi Prompt Override Seed",
@@ -266,6 +279,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiClearVram": "Mpi Clear Vram",
     "MpiHasAudio": "Mpi Has Audio",
     "MpiSaveVideo": "Mpi Save Video",
+    "MpiLoadVideo": "Mpi Load Video",
 }
 
 WEB_DIRECTORY = "./web"

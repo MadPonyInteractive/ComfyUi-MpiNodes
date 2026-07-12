@@ -48,6 +48,9 @@ Primitive operations for comparisons, type conversions, rounding, and boolean lo
 | **MpiListRange** | Output a sub-range of any list using inclusive `start`/`end` indices. Negative indices count from the end. Outputs sliced list and its count. |
 | **MpiReroute** | Pass any value through unchanged. Rename the node title for a labelled reroute. |
 | **MpiConditioningReroute** | Pass `positive` and `negative` conditioning through unchanged — a labelled conditioning reroute. |
+| **MpiBlockIfEmpty** | Pass any value through, but block downstream execution if it is empty (empty string/list/dict/None/zero-element tensor/empty audio). 0, 0.0 and False pass through. |
+| **MpiAnyChecker** | Pass any value through unchanged and output a `has_value` boolean — true if non-empty, false if empty. Same emptiness rules as MpiBlockIfEmpty. |
+| **MpiSeedPassthrough** | Pass any value through and emit a `seed`. Forces the workflow to re-run every time (via `IS_CHANGED`) so seed-less workflows don't get stuck on cached outputs. Leave `any` unconnected to use as a pure seed source. |
 | **MpiLogger** | Log any input value to the console with a prefix. |
 
 ---
@@ -98,6 +101,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | **MpiBboxToMask** | Convert bounding boxes (xyxy or xywh format) to mask tensors. |
 | **MpiGridDimensions** | Calculate grid dimensions and corrected source size for perfect tiling — avoids repeated tiles when fed to UltimateSDUpscale. Has auto mode. |
 | **MpiUpscaleModelScale** | Takes a `Load Upscale Model` node (or any UPSCALE_MODEL input) and reads its native scale (1x/2x/4x/8x) from the model's descriptor metadata. Outputs INT and FLOAT. fallback_scale used only if metadata is absent. |
+| **MpiLoadImageFromPath** | Load an image from a file path with an in-graph preview. Outputs image, mask, width, height. Blocks downstream execution if the path is empty. |
 | **MpiMaskDebugInfo** | Print mask shape, dtype, and device info to the console for debugging. |
 | **MpiAddImageToList** | Append an image to a list of images. |
 
@@ -173,6 +177,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | Node | Description |
 |---|---|
 | **MpiSaveVideo** | Fast save-video node with no in-graph preview and optional audio. Encodes an IMAGE frame batch (+ optional AUDIO) to a single .mp4 in one libx264 pass, on the engine — much faster than CreateVideo+SaveVideo for video export, and remote gens transfer only the final mp4. Toggle audio with the `use_audio` boolean; GPU-agnostic (no nvenc). |
+| **MpiLoadVideo** | Fast, no-frills video loader by path. Decodes frames + audio and outputs source info (fps, frame_count, duration, width, height) in one ffmpeg pass — no in-graph preview, no VHS param surface, so it loads much faster than Load Video (Path). Input named `string` to match MpiString / MpiAnyChecker; empty/missing path blocks downstream. |
 
 ---
 

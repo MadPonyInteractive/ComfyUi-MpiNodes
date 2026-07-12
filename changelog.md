@@ -26,3 +26,9 @@
 - fixed: MpiSaveVideo now writes the filename_prefix (was saving `_00001.mp4` with no prefix — used the wrong return value from get_save_image_path)
 - fixed: MpiSaveVideo now encodes audio from VHS/LazyAudioMap sources (was checking isinstance(dict), which a LazyAudioMap fails, so no audio track was ever written)
 # Version: V1.1.6
+
+- MpiBlockIfEmpty - added
+- MpiAnyChecker - added
+- MpiLoadImageFromPath - added
+- MpiSeedPassthrough - added
+- MpiLoadVideo - added

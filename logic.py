@@ -1,5 +1,6 @@
 import math
-from .help_funcs import round_to_multiple
+from comfy_execution.graph import ExecutionBlocker  # type: ignore
+from .help_funcs import round_to_multiple, is_empty_value
 
 
 class MpiRoundToMultiple:
@@ -392,6 +393,100 @@ class MpiReroute:
 
     def doit(self, any):
         return (any,)
+
+
+class MpiBlockIfEmpty:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "any": ("*", {"forceInput": True}),
+            },
+        }
+
+    RETURN_TYPES = ("*",)
+    RETURN_NAMES = ("any",)
+    CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Pass any value through, but block execution downstream if it is empty (empty string/list/dict/None). 0, 0.0 and False are not empty and pass through."
+    FUNCTION = "doit"
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, input_types):
+        return True
+
+    def doit(self, any):
+        if is_empty_value(any):
+            return (ExecutionBlocker(None),)
+        return (any,)
+
+
+class MpiAnyChecker:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "any": ("*", {"forceInput": True}),
+            },
+        }
+
+    RETURN_TYPES = ("*", "BOOLEAN")
+    RETURN_NAMES = ("any", "has_value")
+    CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Pass any value through unchanged and output has_value: true if it holds something, false if empty (empty string/list/dict/None/zero-element tensor/empty audio). 0, 0.0 and False count as having a value."
+    FUNCTION = "doit"
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, input_types):
+        return True
+
+    def doit(self, any):
+        return (any, not is_empty_value(any))
+
+
+class MpiSeedPassthrough:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "seed": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 0xFFFFFFFFFFFFFFFF,
+                        "control_after_generate": True,
+                        "tooltip": "Set control_after_generate to 'randomize' for a fresh seed each run.",
+                    },
+                ),
+            },
+            "optional": {
+                "any": ("*", {"forceInput": True}),
+            },
+        }
+
+    RETURN_TYPES = ("*", "INT")
+    RETURN_NAMES = ("any", "seed")
+    CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = (
+        "Pass any value through and emit a seed. Forces the workflow to "
+        "re-run every time (via IS_CHANGED) so seed-less workflows don't get "
+        "stuck on cached outputs. Leave 'any' unconnected to use as a pure "
+        "seed source."
+    )
+    FUNCTION = "doit"
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, input_types):
+        return True
+
+    @classmethod
+    def IS_CHANGED(cls, seed, any=None):
+        # Return the seed so ComfyUI sees the node as dirty whenever the seed
+        # changes; with control_after_generate=randomize that's every run.
+        return seed
+
+    def doit(self, seed, any=None):
+        return (any, seed)
 
 
 class MpiConditioningReroute:
