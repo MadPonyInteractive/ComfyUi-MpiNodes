@@ -1,9 +1,55 @@
-import hashlib, re, random, os, json, shutil, math, subprocess
+import hashlib, re, random, os, json, shutil, math, subprocess, ast, operator
 import comfy  # type: ignore
 import torch  # type:ignore
 import folder_paths as comfy_paths  # type: ignore
 
 _lora_cache = {}
+
+
+# Arithmetic-only expression evaluator. Replaces eval() — the Comfy registry
+# bans eval/exec outright (RCE risk), and an eval sandbox is bypassable anyway.
+# ast walks the parse tree and executes only whitelisted operators + math
+# functions, so an untrusted expression string can't reach arbitrary code.
+_MATH_BINOPS = {
+    ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
+    ast.Div: operator.truediv, ast.FloorDiv: operator.floordiv,
+    ast.Mod: operator.mod, ast.Pow: operator.pow,
+}
+_MATH_UNARYOPS = {ast.UAdd: operator.pos, ast.USub: operator.neg}
+_MATH_FUNCS = {n: getattr(math, n) for n in dir(math) if not n.startswith("__")}
+
+
+def safe_math_eval(expression, variables):
+    """Evaluate an arithmetic `expression` string with the given `variables`
+    dict, using only +-*///%** , comparisons, math.* functions and numeric
+    literals. Raises ValueError on anything else (attribute access, calls to
+    non-math names, imports, etc.)."""
+    _CMP = {
+        ast.Eq: operator.eq, ast.NotEq: operator.ne, ast.Lt: operator.lt,
+        ast.LtE: operator.le, ast.Gt: operator.gt, ast.GtE: operator.ge,
+    }
+
+    def _ev(node):
+        if isinstance(node, ast.Constant):  # numbers (and bools)
+            return node.value
+        if isinstance(node, ast.Name):
+            if node.id in variables:
+                return variables[node.id]
+            raise ValueError(f"unknown name '{node.id}'")
+        if isinstance(node, ast.BinOp) and type(node.op) in _MATH_BINOPS:
+            return _MATH_BINOPS[type(node.op)](_ev(node.left), _ev(node.right))
+        if isinstance(node, ast.UnaryOp) and type(node.op) in _MATH_UNARYOPS:
+            return _MATH_UNARYOPS[type(node.op)](_ev(node.operand))
+        if isinstance(node, ast.Compare) and len(node.ops) == 1:
+            return _CMP[type(node.ops[0])](_ev(node.left), _ev(node.comparators[0]))
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+            fn = _MATH_FUNCS.get(node.func.id)
+            if fn is None or node.keywords:
+                raise ValueError(f"disallowed call '{getattr(node.func, 'id', '?')}'")
+            return fn(*[_ev(a) for a in node.args])
+        raise ValueError(f"disallowed expression: {ast.dump(node)}")
+
+    return _ev(ast.parse(expression, mode="eval").body)
 
 
 def is_empty_value(value):
