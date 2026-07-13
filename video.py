@@ -188,7 +188,7 @@ class MpiLoadVideo:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "INT", "FLOAT", "INT", "INT")
+    RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "INT", "FLOAT", "INT", "INT", "BOOLEAN")
     RETURN_NAMES = (
         "images",
         "audio",
@@ -197,14 +197,16 @@ class MpiLoadVideo:
         "duration",
         "width",
         "height",
+        "has_audio",
     )
     CATEGORY = "MpiNodes/Video"
     DESCRIPTION = (
         "Fast, no-frills video loader: decodes frames + audio and reports "
         "source info (fps, frame_count, duration, width, height) in one "
         "ffmpeg pass. No in-graph preview and no VHS param surface, so it "
-        "loads much faster than Load Video (Path). Input is named 'string' to "
-        "match MpiString / MpiAnyChecker. Empty/missing path blocks downstream."
+        "loads much faster than Load Video (Path). Also outputs has_audio "
+        "(True when the file contains an audio track). Input is named 'string' "
+        "to match MpiString / MpiAnyChecker. Empty/missing path blocks downstream."
     )
     FUNCTION = "load"
 
@@ -215,17 +217,17 @@ class MpiLoadVideo:
         ffmpeg = find_ffmpeg()
         if not path or not os.path.isfile(path) or not ffmpeg:
             b = ExecutionBlocker(None)
-            return (b, b, 0.0, 0, 0.0, 0, 0)
+            return (b, b, 0.0, 0, 0.0, 0, 0, False)
 
         w, h, fps = _probe_video_meta(ffmpeg, path)
         if w == 0 or h == 0:
             b = ExecutionBlocker(None)
-            return (b, b, 0.0, 0, 0.0, 0, 0)
+            return (b, b, 0.0, 0, 0.0, 0, 0, False)
 
         images, n = _decode_frames(ffmpeg, path, w, h)
         audio = _load_audio(ffmpeg, path)
         duration = n / fps if fps else 0.0
-        return (images, audio, fps, n, duration, w, h)
+        return (images, audio, fps, n, duration, w, h, audio is not None)
 
 
 class MpiLoadAudio:

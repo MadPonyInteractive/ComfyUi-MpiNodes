@@ -1,4 +1,4 @@
-from .help_funcs import AlwaysEqualProxy, safe_math_eval
+from .help_funcs import AlwaysEqualProxy, safe_math
 
 class MpiMath:
     @classmethod
@@ -25,7 +25,7 @@ class MpiMath:
 
     def doit(self, a, math_expression, b=0, c=0):
         try:
-            result = safe_math_eval(math_expression, {"a": a, "b": b, "c": c})
+            result = safe_math(math_expression, {"a": a, "b": b, "c": c})
             return (result,)
         except Exception as e:
             print(f"[MpiMath] Error evaluating expression '{math_expression}': {e}")

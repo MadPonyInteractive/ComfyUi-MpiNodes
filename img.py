@@ -297,9 +297,11 @@ Negative values start counting from the last image.
         return (chosen_images, index)
 
 
-def load_image_from_path(path):
+def load_image_from_path(path, channel="alpha"):
     """Load an image file into a ComfyUI IMAGE tensor + MASK, the same way
-    ComfyUI's built-in LoadImage does (EXIF-transpose, RGB, /255, alpha->mask)."""
+    ComfyUI's built-in LoadImage does (EXIF-transpose, RGB, /255, alpha->mask).
+    channel selects the mask source: alpha (inverted, like LoadImage), or one of
+    red/green/blue taken straight from the RGB image."""
     img = Image.open(path)
     img = ImageOps.exif_transpose(img)
     if img.mode == "I":
@@ -307,11 +309,15 @@ def load_image_from_path(path):
     rgb = img.convert("RGB")
     arr = np.array(rgb).astype(np.float32) / 255.0
     image = torch.from_numpy(arr)[None,]
-    if "A" in img.getbands():
-        mask = np.array(img.getchannel("A")).astype(np.float32) / 255.0
-        mask = 1.0 - torch.from_numpy(mask)
+    if channel == "alpha":
+        if "A" in img.getbands():
+            mask = np.array(img.getchannel("A")).astype(np.float32) / 255.0
+            mask = 1.0 - torch.from_numpy(mask)
+        else:
+            mask = torch.zeros((rgb.height, rgb.width), dtype=torch.float32)
     else:
-        mask = torch.zeros((rgb.height, rgb.width), dtype=torch.float32)
+        idx = {"red": 0, "green": 1, "blue": 2}[channel]
+        mask = torch.from_numpy(arr[..., idx])
     return image, mask.unsqueeze(0)
 
 
@@ -326,6 +332,13 @@ class MpiLoadImageFromPath(PreviewImage):
                         "default": "",
                         "multiline": False,
                         "tooltip": "Image file path. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
+                    },
+                ),
+                "channel": (
+                    ["alpha", "red", "green", "blue"],
+                    {
+                        "default": "alpha",
+                        "tooltip": "Which channel to output as the mask. 'alpha' inverts the alpha channel like LoadImage; red/green/blue take that color channel directly.",
                     },
                 ),
             },
@@ -346,13 +359,13 @@ class MpiLoadImageFromPath(PreviewImage):
     )
     FUNCTION = "load"
 
-    def load(self, string, prompt=None, extra_pnginfo=None):
+    def load(self, string, channel="alpha", prompt=None, extra_pnginfo=None):
         path = (string or "").strip()
         if not path or not os.path.isfile(path):
             blocked = ExecutionBlocker(None)
             return {"ui": {"images": []}, "result": (blocked, blocked, 0, 0)}
 
-        image, mask = load_image_from_path(path)
+        image, mask = load_image_from_path(path, channel)
         _, h, w, _ = image.shape
         # Reuse PreviewImage.save_images for the in-graph thumbnail.
         preview = self.save_images(image, prompt=prompt, extra_pnginfo=extra_pnginfo)

@@ -101,7 +101,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | **MpiBboxToMask** | Convert bounding boxes (xyxy or xywh format) to mask tensors. |
 | **MpiGridDimensions** | Calculate grid dimensions and corrected source size for perfect tiling — avoids repeated tiles when fed to UltimateSDUpscale. Has auto mode. |
 | **MpiUpscaleModelScale** | Takes a `Load Upscale Model` node (or any UPSCALE_MODEL input) and reads its native scale (1x/2x/4x/8x) from the model's descriptor metadata. Outputs INT and FLOAT. fallback_scale used only if metadata is absent. |
-| **MpiLoadImageFromPath** | Load an image from a file path with an in-graph preview. Outputs image, mask, width, height. Blocks downstream execution if the path is empty. |
+| **MpiLoadImageFromPath** | Load an image from a file path with an in-graph preview. Outputs image, mask, width, height. A channel combo (alpha/red/green/blue) selects the mask source. Blocks downstream execution if the path is empty. |
 | **MpiCrop** | Crop an image to width/height at a chosen anchor (center/left/right/top/bottom). width/height of 0 keep that dimension full; the crop is floored to a multiple of divisible_by. |
 | **MpiMaskDebugInfo** | Print mask shape, dtype, and device info to the console for debugging. |
 | **MpiAddImageToList** | Append an image to a list of images. |
@@ -178,7 +178,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | Node | Description |
 |---|---|
 | **MpiSaveVideo** | Fast save-video node with no in-graph preview and optional audio. Encodes an IMAGE frame batch (+ optional AUDIO) to a single .mp4 in one libx264 pass, on the engine — much faster than CreateVideo+SaveVideo for video export, and remote gens transfer only the final mp4. Toggle audio with the `use_audio` boolean; GPU-agnostic (no nvenc). |
-| **MpiLoadVideo** | Fast, no-frills video loader by path. Decodes frames + audio and outputs source info (fps, frame_count, duration, width, height) in one ffmpeg pass — no in-graph preview, no VHS param surface, so it loads much faster than Load Video (Path). Input named `string` to match MpiString / MpiAnyChecker; empty/missing path blocks downstream. |
+| **MpiLoadVideo** | Fast, no-frills video loader by path. Decodes frames + audio and outputs source info (fps, frame_count, duration, width, height, has_audio) in one ffmpeg pass — no in-graph preview, no VHS param surface, so it loads much faster than Load Video (Path). Input named `string` to match MpiString / MpiAnyChecker; empty/missing path blocks downstream. |
 | **MpiLoadAudio** | Load audio from a file path into a ComfyUI AUDIO object, like the built-in Load Audio but driven by a `string` path (matches MpiString / MpiAnyChecker). Works on anything ffmpeg reads, including the audio track of a video. Empty/missing/audio-less path blocks downstream. |
 
 ---

@@ -19,7 +19,7 @@ _MATH_UNARYOPS = {ast.UAdd: operator.pos, ast.USub: operator.neg}
 _MATH_FUNCS = {n: getattr(math, n) for n in dir(math) if not n.startswith("__")}
 
 
-def safe_math_eval(expression, variables):
+def safe_math(expression, variables):
     """Evaluate an arithmetic `expression` string with the given `variables`
     dict, using only +-*///%** , comparisons, math.* functions and numeric
     literals. Raises ValueError on anything else (attribute access, calls to
