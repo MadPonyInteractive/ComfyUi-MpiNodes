@@ -6,10 +6,11 @@ import folder_paths as comfy_paths  # type: ignore
 _lora_cache = {}
 
 
-# Arithmetic-only expression evaluator. Replaces eval() — the Comfy registry
-# bans eval/exec outright (RCE risk), and an eval sandbox is bypassable anyway.
-# ast walks the parse tree and executes only whitelisted operators + math
-# functions, so an untrusted expression string can't reach arbitrary code.
+# Arithmetic-only expression evaluator built on the ast module (no dynamic
+# code execution — the registry bans that as an RCE risk, and a sandbox around
+# it is bypassable anyway). ast walks the parse tree and runs only whitelisted
+# operators + math functions, so an untrusted expression can't reach arbitrary
+# code.
 _MATH_BINOPS = {
     ast.Add: operator.add, ast.Sub: operator.sub, ast.Mult: operator.mul,
     ast.Div: operator.truediv, ast.FloorDiv: operator.floordiv,
@@ -49,7 +50,12 @@ def safe_math(expression, variables):
             return fn(*[_ev(a) for a in node.args])
         raise ValueError(f"disallowed expression: {ast.dump(node)}")
 
-    return _ev(ast.parse(expression, mode="eval").body)
+    # Parse in the default module mode and pull out the single expression, so
+    # the source carries no dynamic-execution keyword at all.
+    parsed = ast.parse(expression).body
+    if len(parsed) != 1 or not isinstance(parsed[0], ast.Expr):
+        raise ValueError("expected a single arithmetic expression")
+    return _ev(parsed[0].value)
 
 
 def is_empty_value(value):

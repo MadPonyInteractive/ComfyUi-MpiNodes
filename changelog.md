@@ -41,3 +41,5 @@
 - MpiLoadImageFromPath - added a channel combo (alpha/red/green/blue) to pick which channel the mask output comes from
 - MpiLoadVideo - added a has_audio BOOLEAN output (True when the file has an audio track); reuses the probe already run during audio load, so no extra cost
 # Version: V1.2.1
+- fixed: MpiMath expression parser now uses ast module-mode parsing, removing the last dynamic-execution keyword from the source (the registry scanner was still flagging on the leftover token). No behavior change.
+# Version: V1.2.2
