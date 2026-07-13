@@ -42,6 +42,21 @@ def round_to_multiple(value, multiple_of, round):
     return rounded
 
 
+def crop_offset(outer, inner, position, axis):
+    """Top-left offset to place an `inner`-sized crop inside `outer` along one
+    axis, given a position anchor. axis 'x' honors left/right, axis 'y' honors
+    top/bottom; center (and the irrelevant axis) centers."""
+    if position == "left" and axis == "x":
+        return 0
+    if position == "right" and axis == "x":
+        return outer - inner
+    if position == "top" and axis == "y":
+        return 0
+    if position == "bottom" and axis == "y":
+        return outer - inner
+    return (outer - inner) // 2
+
+
 def create_mask_from_bbox(
     image_tensor, bbox, normalized=False, bbox_format="xywh"
 ):

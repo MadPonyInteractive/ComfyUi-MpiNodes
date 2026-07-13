@@ -1,5 +1,5 @@
 import torch  # type:ignore
-from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple
+from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple, crop_offset
 import math
 import os
 import numpy as np  # type: ignore
@@ -408,7 +408,80 @@ class MpiUpscaleModelScale:
         return (scale, float(scale))
 
 
+class MpiCrop:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "width": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 0xFFFFFFFF,
+                        "tooltip": "Target crop width. 0 = keep full width (only divisible-by trim applies).",
+                    },
+                ),
+                "height": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 0xFFFFFFFF,
+                        "tooltip": "Target crop height. 0 = keep full height (only divisible-by trim applies).",
+                    },
+                ),
+                "divisible_by": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 256,
+                        "tooltip": "Final crop size is floored to a multiple of this.",
+                    },
+                ),
+                "position": (["center", "left", "right", "top", "bottom"],),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "INT", "INT")
+    RETURN_NAMES = ("image", "width", "height")
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = (
+        "Crop an image to width/height at a chosen anchor. width/height of 0 "
+        "keep that dimension full. The final crop is floored to a multiple of "
+        "divisible_by, so with width=height=0 it just trims to a divisible size."
+    )
+    FUNCTION = "crop"
+
+    def crop(self, image, width, height, divisible_by, position):
+        _, H, W, _ = image.shape
+
+        target_w = W if width <= 0 else min(width, W)
+        target_h = H if height <= 0 else min(height, H)
+
+        target_w = round_to_multiple(target_w, divisible_by, round=False)
+        target_h = round_to_multiple(target_h, divisible_by, round=False)
+
+        x = crop_offset(W, target_w, position, "x")
+        y = crop_offset(H, target_h, position, "y")
+
+        cropped = image[:, y:y + target_h, x:x + target_w, :]
+        return (cropped, target_w, target_h)
+
+
 if __name__ == "__main__":
+    # crop_offset anchoring
+    assert crop_offset(100, 40, "left", "x") == 0
+    assert crop_offset(100, 40, "right", "x") == 60
+    assert crop_offset(100, 40, "center", "x") == 30
+    assert crop_offset(100, 40, "top", "x") == 30      # top irrelevant on x -> center
+    assert crop_offset(100, 40, "top", "y") == 0
+    assert crop_offset(100, 40, "bottom", "y") == 60
+    # divisible-by trim floors size
+    assert round_to_multiple(101, 8, round=False) == 96
+
     class _M:
         def __init__(self, s):
             self.scale = s

@@ -29,6 +29,7 @@ from .img import (
     MpiGridDimensions,
     MpiUpscaleModelScale,
     MpiLoadImageFromPath,
+    MpiCrop,
 )
 from .text_list_replace import MpiTextListReplace
 from .text_list_join import MpiTextListJoin
@@ -91,7 +92,7 @@ from .multi_text import (
 )
 from .wan import MpiWanFrames, MpiWanSeconds
 from .vram import MpiClearVram
-from .video import MpiHasAudio, MpiSaveVideo, MpiLoadVideo
+from .video import MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
 
 # TEST NODES
 # from .dynamic_combo import MpiDynamicCombo
@@ -160,6 +161,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiGetImageAtIndex": MpiGetImageAtIndex,
     "MpiUpscaleModelScale": MpiUpscaleModelScale,
     "MpiLoadImageFromPath": MpiLoadImageFromPath,
+    "MpiCrop": MpiCrop,
     "MpiPromptOverride": MpiPromptOverride,
     "MpiPromptOverrideSeed": MpiPromptOverrideSeed,
     "MpiJsonLoad": MpiJsonLoad,
@@ -187,6 +189,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiHasAudio": MpiHasAudio,
     "MpiSaveVideo": MpiSaveVideo,
     "MpiLoadVideo": MpiLoadVideo,
+    "MpiLoadAudio": MpiLoadAudio,
     # TESTS
     # "MpiDummyToggleNode": MpiDummyToggleNode,
     # "MpiDynamicCombo": MpiDynamicCombo,
@@ -253,6 +256,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiGetImageAtIndex": "Mpi Get Image At Index",
     "MpiUpscaleModelScale": "Mpi Upscale Model Scale",
     "MpiLoadImageFromPath": "Mpi Load Image From Path",
+    "MpiCrop": "Mpi Crop",
     "MpiGridDimensions": "Mpi Grid Dimensions",
     "MpiPromptOverride": "Mpi Prompt Override",
     "MpiPromptOverrideSeed": "Mpi Prompt Override Seed",
@@ -280,6 +284,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiHasAudio": "Mpi Has Audio",
     "MpiSaveVideo": "Mpi Save Video",
     "MpiLoadVideo": "Mpi Load Video",
+    "MpiLoadAudio": "Mpi Load Audio",
 }
 
 WEB_DIRECTORY = "./web"

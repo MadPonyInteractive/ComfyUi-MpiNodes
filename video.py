@@ -228,6 +228,48 @@ class MpiLoadVideo:
         return (images, audio, fps, n, duration, w, h)
 
 
+class MpiLoadAudio:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "string": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": False,
+                        "tooltip": "Audio (or video) file path. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("AUDIO",)
+    RETURN_NAMES = ("audio",)
+    CATEGORY = "MpiNodes/Video"
+    DESCRIPTION = (
+        "Load audio from a file path into a ComfyUI AUDIO object, like the "
+        "built-in Load Audio but driven by a path string (matches MpiString / "
+        "MpiAnyChecker). Works on any file ffmpeg can read, including pulling "
+        "the audio track out of a video. Empty/missing/audio-less path blocks "
+        "downstream."
+    )
+    FUNCTION = "load"
+
+    def load(self, string):
+        from comfy_execution.graph import ExecutionBlocker  # type: ignore
+
+        path = resolve_video_path((string or "").strip())
+        ffmpeg = find_ffmpeg()
+        if not path or not os.path.isfile(path) or not ffmpeg:
+            return (ExecutionBlocker(None),)
+
+        audio = _load_audio(ffmpeg, path)
+        if audio is None:
+            return (ExecutionBlocker(None),)
+        return (audio,)
+
+
 class MpiSaveVideo:
     @classmethod
     def INPUT_TYPES(cls):
@@ -303,14 +345,28 @@ class MpiSaveVideo:
 
             cmd += [
                 "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                # libx264/yuv420p require even dimensions; crop off the odd
+                # last row/column so 2899x806 etc. don't fail to open the encoder.
+                "-vf", "crop=trunc(iw/2)*2:trunc(ih/2)*2",
                 "-preset", "fast", "-crf", "18",
                 "-movflags", "+faststart",
                 out_path,
             ]
 
-            proc = subprocess.run(cmd, input=frames.numpy().tobytes(), capture_output=True)
-            if proc.returncode != 0:
-                tail = proc.stderr.decode("utf-8", "replace")[-2000:]
+            # Stream frames to stdin instead of buffering the whole raw video as
+            # one bytes blob (.tobytes() doubled a multi-GB clip in RAM). Write
+            # frame-by-frame so peak overhead is one frame, not the whole video.
+            frame_view = frames.numpy()
+            proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                for f in frame_view:
+                    proc.stdin.write(f.tobytes())
+                proc.stdin.close()
+            except BrokenPipeError:
+                pass  # ffmpeg died early; its stderr below has the real reason
+            stderr = proc.stderr.read()
+            if proc.wait() != 0:
+                tail = stderr.decode("utf-8", "replace")[-2000:]
                 raise RuntimeError(f"[MpiSaveVideo] ffmpeg failed:\n{tail}")
         finally:
             if wav_path and os.path.exists(wav_path):

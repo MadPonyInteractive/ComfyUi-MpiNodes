@@ -32,3 +32,7 @@
 - MpiLoadImageFromPath - added
 - MpiSeedPassthrough - added
 - MpiLoadVideo - added
+- MpiLoadAudio - added
+- MpiCrop - added
+- fixed: MpiSaveVideo crops odd dimensions to even (libx264/yuv420p refused e.g. 2899x806) and streams frames to ffmpeg stdin instead of buffering the whole raw video in RAM (was doubling multi-GB clips, maxing out memory)
+# Version: V1.1.7
