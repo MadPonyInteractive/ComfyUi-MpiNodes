@@ -19,7 +19,7 @@ from .prompt_gen.rand_prompt_gen import (
 )
 from .batch_text_replace import MpiBatchTextReplace
 from .add_image_to_list import MpiAddImageToList
-from .logger import MpiLogger
+from .logger import MpiLogger, MpiExecLogger
 from .img import (
     MpiBboxToMask,
     MpiScaledDimensions,
@@ -49,7 +49,10 @@ from .logic import (
     MpiListCount,
     MpiListRange,
     MpiReroute,
-    MpiBlockIfEmpty,
+    MpiAnyBlocker,
+    MpiBlocker,
+    MpiIsListEmpty,
+    MpiBlockIfEmptyList,
     MpiAnyChecker,
     MpiSeedPassthrough,
     MpiConditioningReroute,
@@ -105,6 +108,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiBboxToMask": MpiBboxToMask,
     "MpiAddImageToList": MpiAddImageToList,
     "MpiLogger": MpiLogger,
+    "MpiExecLogger": MpiExecLogger,
     "MpiScaledDimensions": MpiScaledDimensions,
     "MpiTextListReplace": MpiTextListReplace,
     "MpiTextListJoin": MpiTextListJoin,
@@ -130,7 +134,11 @@ NODE_CLASS_MAPPINGS = {
     "MpiListCount": MpiListCount,
     "MpiListRange": MpiListRange,
     "MpiReroute": MpiReroute,
-    "MpiBlockIfEmpty": MpiBlockIfEmpty,
+    "MpiAnyBlocker": MpiAnyBlocker,
+    "MpiBlockIfEmpty": MpiAnyBlocker,  # alias: keeps pre-rename saved workflows loading
+    "MpiBlocker": MpiBlocker,
+    "MpiIsListEmpty": MpiIsListEmpty,
+    "MpiBlockIfEmptyList": MpiBlockIfEmptyList,
     "MpiAnyChecker": MpiAnyChecker,
     "MpiSeedPassthrough": MpiSeedPassthrough,
     "MpiConditioningReroute": MpiConditioningReroute,
@@ -201,6 +209,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiBboxToMask": "Mpi Bbox To Mask",
     "MpiAddImageToList": "Mpi Add Image to List",
     "MpiLogger": "Mpi Logger",
+    "MpiExecLogger": "Mpi Exec Logger",
     "MpiScaledDimensions": "Mpi Scaled Dimensions",
     "MpiTextListReplace": "Mpi Text List Replace",
     "MpiTextListJoin": "Mpi Text List Join",
@@ -226,7 +235,11 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiListCount": "Mpi List Count",
     "MpiListRange": "Mpi List Range",
     "MpiReroute": "Mpi Reroute",
+    "MpiAnyBlocker": "Mpi Any Blocker",
     "MpiBlockIfEmpty": "Mpi Any Blocker",
+    "MpiBlocker": "Mpi Blocker",
+    "MpiIsListEmpty": "Mpi Is List Empty",
+    "MpiBlockIfEmptyList": "Mpi Block If Empty List",
     "MpiAnyChecker": "Mpi Any Checker",
     "MpiSeedPassthrough": "Mpi Seed Passthrough",
     "MpiConditioningReroute": "Mpi Conditioning Reroute",

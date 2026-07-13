@@ -43,6 +43,8 @@ def safe_math(expression, variables):
             return _MATH_UNARYOPS[type(node.op)](_ev(node.operand))
         if isinstance(node, ast.Compare) and len(node.ops) == 1:
             return _CMP[type(node.ops[0])](_ev(node.left), _ev(node.comparators[0]))
+        if isinstance(node, ast.IfExp):  # `body if test else orelse`
+            return _ev(node.body) if _ev(node.test) else _ev(node.orelse)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
             fn = _MATH_FUNCS.get(node.func.id)
             if fn is None or node.keywords:

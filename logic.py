@@ -1,6 +1,6 @@
 import math
 from comfy_execution.graph import ExecutionBlocker  # type: ignore
-from .help_funcs import round_to_multiple, is_empty_value
+from .help_funcs import round_to_multiple, is_empty_value, AlwaysEqualProxy
 
 
 class MpiRoundToMultiple:
@@ -395,7 +395,7 @@ class MpiReroute:
         return (any,)
 
 
-class MpiBlockIfEmpty:
+class MpiAnyBlocker:
     @classmethod
     def INPUT_TYPES(cls):
         return {
@@ -418,6 +418,93 @@ class MpiBlockIfEmpty:
         if is_empty_value(any):
             return (ExecutionBlocker(None),)
         return (any,)
+
+
+class MpiIsListEmpty:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "list_input": ("*", {"forceInput": True}),
+            }
+        }
+
+    RETURN_TYPES = ("BOOLEAN", "INT")
+    RETURN_NAMES = ("is_empty", "count")
+    CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Check whether a list of any type is empty. Outputs is_empty (true if zero items) and the item count."
+    FUNCTION = "doit"
+    INPUT_IS_LIST = True
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, input_types):
+        return True
+
+    def doit(self, list_input):
+        n = len(list_input)
+        return (n == 0, n)
+
+
+class MpiBlocker:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "input": (AlwaysEqualProxy("*"), {}),
+                "boolean": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "label_on": "continue",
+                        "label_off": "block",
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = (AlwaysEqualProxy("*"),)
+    RETURN_NAMES = ("output",)
+    CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Manual gate: pass input through when the switch is on (continue), block downstream execution when off (block). A one-output if/else."
+    FUNCTION = "doit"
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, input_types):
+        return True
+
+    def doit(self, input, boolean: bool):
+        if boolean:
+            return (input,)
+        return (ExecutionBlocker(None),)
+
+
+class MpiBlockIfEmptyList:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "list_input": ("*", {"forceInput": True}),
+            },
+        }
+
+    RETURN_TYPES = ("*",)
+    RETURN_NAMES = ("list_output",)
+    CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Pass a list through, but block downstream execution if the list is empty (zero items). Place before nodes that index into a list so an empty list halts the branch instead of throwing IndexError. Unlike Mpi Any Blocker, this runs on the whole list, so a truly empty list still reaches it."
+    FUNCTION = "doit"
+    INPUT_IS_LIST = True
+    OUTPUT_IS_LIST = (True,)
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, input_types):
+        return True
+
+    def doit(self, list_input):
+        # INPUT_IS_LIST means an empty upstream list arrives as [] and this node
+        # still runs — a per-item node would just be skipped, blocking nothing.
+        if len(list_input) == 0:
+            return ([ExecutionBlocker(None)],)
+        return (list_input,)
 
 
 class MpiAnyChecker:

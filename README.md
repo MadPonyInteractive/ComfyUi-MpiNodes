@@ -45,13 +45,17 @@ Primitive operations for comparisons, type conversions, rounding, and boolean lo
 | **MpiSimpleBoolean** | Pass through a boolean value only. |
 | **MpiFloat / MpiInt / MpiString / MpiText** | Pass-through nodes for float, int, string (single-line), and text (multiline) values. |
 | **MpiListCount** | Count entries in a list of any type. Outputs `count` (INT) and `has_items` (BOOLEAN, true if non-empty). |
+| **MpiIsListEmpty** | Check whether a list of any type is empty. Outputs `is_empty` (BOOLEAN, true if zero items) and `count` (INT). Route `is_empty` into an if/else to skip nodes that would `IndexError` on an empty list. |
+| **MpiBlockIfEmptyList** | Pass a list through, but block downstream execution if it is empty. Place before nodes that index into a list so an empty list halts the branch instead of throwing `IndexError`. Unlike MpiAnyBlocker, it receives the whole list, so a truly empty list still reaches it. |
 | **MpiListRange** | Output a sub-range of any list using inclusive `start`/`end` indices. Negative indices count from the end. Outputs sliced list and its count. |
 | **MpiReroute** | Pass any value through unchanged. Rename the node title for a labelled reroute. |
 | **MpiConditioningReroute** | Pass `positive` and `negative` conditioning through unchanged — a labelled conditioning reroute. |
-| **MpiBlockIfEmpty** | Pass any value through, but block downstream execution if it is empty (empty string/list/dict/None/zero-element tensor/empty audio). 0, 0.0 and False pass through. |
-| **MpiAnyChecker** | Pass any value through unchanged and output a `has_value` boolean — true if non-empty, false if empty. Same emptiness rules as MpiBlockIfEmpty. |
+| **MpiAnyBlocker** | Pass any value through, but block downstream execution if it is empty (empty string/list/dict/None/zero-element tensor/empty audio). 0, 0.0 and False pass through. |
+| **MpiBlocker** | Manual gate with a toggle: pass input through when set to `continue`, block downstream execution when set to `block`. A one-output if/else. |
+| **MpiAnyChecker** | Pass any value through unchanged and output a `has_value` boolean — true if non-empty, false if empty. Same emptiness rules as MpiAnyBlocker. |
 | **MpiSeedPassthrough** | Pass any value through and emit a `seed`. Forces the workflow to re-run every time (via `IS_CHANGED`) so seed-less workflows don't get stuck on cached outputs. Leave `any` unconnected to use as a pure seed source. |
 | **MpiLogger** | Log any input value to the console with a prefix. |
+| **MpiExecLogger** | Pass any input through to its output while logging a message to the console — wire inline to print workflow progress. |
 
 ---
 

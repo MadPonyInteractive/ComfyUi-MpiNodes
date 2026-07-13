@@ -288,6 +288,10 @@ Negative values start counting from the last image.
         }
 
     def indexedimagesfrombatch(self, images, index):
+        # Empty batch: nothing to index. Block downstream instead of IndexError.
+        if images.shape[0] == 0:
+            return (ExecutionBlocker(None), index)
+
         # Convert list of indices to a PyTorch tensor
         indices_tensor = torch.tensor([index], dtype=torch.long)
 

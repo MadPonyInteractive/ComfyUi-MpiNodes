@@ -43,3 +43,11 @@
 # Version: V1.2.1
 - fixed: MpiMath expression parser now uses ast module-mode parsing, removing the last dynamic-execution keyword from the source (the registry scanner was still flagging on the leftover token). No behavior change.
 # Version: V1.2.2
+- MpiIsListEmpty - added
+- MpiBlockIfEmptyList - added
+- MpiBlocker - added
+- MpiBlockIfEmpty - class renamed to MpiAnyBlocker (matches its "Mpi Any Blocker" display name); old class name kept as an alias so existing saved workflows still load
+- fixed: MpiMath now supports ternary (`b if a == 1 else 0.0`) expressions again — the ast evaluator was missing IfExp support that eval() had for free, so every conditional expression errored
+- fixed: MpiGetImageAtIndex blocks downstream on an empty image batch instead of throwing IndexError
+- MpiExecLogger - added
+# Version: V1.2.3
