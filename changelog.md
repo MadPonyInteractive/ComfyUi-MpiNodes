@@ -55,3 +55,8 @@
 - fixed: MpiSaveVideo output length is now pinned to the video — shorter audio is padded with silence, longer audio is trimmed, so it no longer either cut the video to a sub-second clip or freeze on the last frame while long audio played out
 - MpiSaveVideo - added a truncate_to_audio toggle (off = keep full video and pad audio; on = cut the clip to the audio length). Grayed out when use_audio is off.
 # Version: V1.2.4
+- MpiCombo - removed (BETA; superseded by a vanilla ComfyUI node)
+- MpiComboMaker - removed (BETA; only fed MpiCombo)
+- MpiCombo1 through MpiCombo10 - removed (txt-file-backed, unmaintained)
+- removed web/combos.js — the only frontend network call in the pack (a same-origin fetch of combos.json); likely the registry scanner's python_network_operations false-positive trigger
+# Version: V1.2.5

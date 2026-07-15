@@ -83,17 +83,6 @@ Route any type of input to a selected output by index.
 
 ---
 
-### Combos
-Dropdown selectors for reusable, named option lists.
-
-| Node | Description |
-|---|---|
-| **MpiComboMaker** | Create, edit, or delete custom combo options stored in `web/user/combos.json`. |
-| **MpiCombo** | Select from custom combo options (created via ComboMaker) — returns value and index. |
-| **MpiCombo1 – MpiCombo10** | Ten preset combo nodes reading from `combo_1.txt` through `combo_10.txt` in `web/user/combos/`. Return selected string, index, and all options. |
-
----
-
 ### Image Operations
 Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 

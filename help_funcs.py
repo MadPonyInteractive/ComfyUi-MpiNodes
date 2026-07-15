@@ -288,16 +288,6 @@ def load_lora_cached(lora_name):
     return lora
 
 
-def load_combo(file_name):
-    path = os.path.join(os.path.dirname(__file__), "user/combos", file_name)
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return tuple(line.strip() for line in f if line.strip())
-    except Exception as e:
-        print(f"[MpiComboLoader] Error loading {file_name}: {e}")
-        return ("None",)
-
-
 def wrap_in_underscores(s):
     # Remove any leading/trailing underscores
     cleaned = re.sub(r"^_*(.*?)_*$", r"\1", s.strip())
