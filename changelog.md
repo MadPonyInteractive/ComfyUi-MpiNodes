@@ -51,3 +51,7 @@
 - fixed: MpiGetImageAtIndex blocks downstream on an empty image batch instead of throwing IndexError
 - MpiExecLogger - added
 # Version: V1.2.3
+- fixed: MpiSaveVideo no longer hangs forever when saving with audio — stderr is now drained on a thread so ffmpeg cannot deadlock on a full stderr pipe while frames stream to stdin
+- fixed: MpiSaveVideo output length is now pinned to the video — shorter audio is padded with silence, longer audio is trimmed, so it no longer either cut the video to a sub-second clip or freeze on the last frame while long audio played out
+- MpiSaveVideo - added a truncate_to_audio toggle (off = keep full video and pad audio; on = cut the clip to the audio length). Grayed out when use_audio is off.
+# Version: V1.2.4

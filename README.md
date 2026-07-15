@@ -181,7 +181,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 
 | Node | Description |
 |---|---|
-| **MpiSaveVideo** | Fast save-video node with no in-graph preview and optional audio. Encodes an IMAGE frame batch (+ optional AUDIO) to a single .mp4 in one libx264 pass, on the engine — much faster than CreateVideo+SaveVideo for video export, and remote gens transfer only the final mp4. Toggle audio with the `use_audio` boolean; GPU-agnostic (no nvenc). |
+| **MpiSaveVideo** | Fast save-video node with no in-graph preview and optional audio. Encodes an IMAGE frame batch (+ optional AUDIO) to a single .mp4 in one libx264 pass, on the engine — much faster than CreateVideo+SaveVideo for video export, and remote gens transfer only the final mp4. Toggle audio with the `use_audio` boolean; output length is pinned to the video (short audio padded, long audio trimmed), or flip `truncate_to_audio` to cut the clip to the audio instead. GPU-agnostic (no nvenc). |
 | **MpiLoadVideo** | Fast, no-frills video loader by path. Decodes frames + audio and outputs source info (fps, frame_count, duration, width, height, has_audio) in one ffmpeg pass — no in-graph preview, no VHS param surface, so it loads much faster than Load Video (Path). Input named `string` to match MpiString / MpiAnyChecker; empty/missing path blocks downstream. |
 | **MpiLoadAudio** | Load audio from a file path into a ComfyUI AUDIO object, like the built-in Load Audio but driven by a `string` path (matches MpiString / MpiAnyChecker). Works on anything ffmpeg reads, including the audio track of a video. Empty/missing/audio-less path blocks downstream. |
 

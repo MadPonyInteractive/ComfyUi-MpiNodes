@@ -294,6 +294,15 @@ class MpiSaveVideo:
                         "tooltip": "Off = ignore the audio input and encode video-only. Lets you toggle audio with one boolean — wire audio straight in, no if/else router needed.",
                     },
                 ),
+                "truncate_to_audio": (
+                    "BOOLEAN",
+                    {
+                        "default": False,
+                        "label_on": "cut to audio",
+                        "label_off": "keep full video",
+                        "tooltip": "On = end the clip when the audio ends (shorter audio trims the video). Off = keep the full video and pad the audio with silence to match.",
+                    },
+                ),
                 "audio": ("AUDIO",),
             },
         }
@@ -311,7 +320,8 @@ class MpiSaveVideo:
     )
     FUNCTION = "doit"
 
-    def doit(self, images, fps, filename_prefix="MpiVideo", use_audio=True, audio=None):
+    def doit(self, images, fps, filename_prefix="MpiVideo", use_audio=True,
+             truncate_to_audio=False, audio=None):
         import torch  # type: ignore
 
         ffmpeg = find_ffmpeg()
@@ -342,8 +352,19 @@ class MpiSaveVideo:
             if use_audio and _audio_has_samples(audio):
                 wav_path = tempfile.mktemp(suffix=".wav")
                 _write_wav(audio["waveform"], audio["sample_rate"], wav_path)
-                cmd += ["-i", wav_path, "-map", "0:v", "-map", "1:a",
-                        "-c:a", "aac", "-shortest"]
+                cmd += ["-i", wav_path, "-map", "0:v", "-map", "1:a", "-c:a", "aac"]
+                if truncate_to_audio:
+                    # Bare -shortest: end at whichever stream ends first. Short
+                    # audio trims the video down to the audio length.
+                    cmd += ["-shortest"]
+                else:
+                    # Hard-cap the output to the VIDEO's exact duration. -apad
+                    # pads short audio with silence up to that -t; -t trims audio
+                    # that runs longer than the video. Either way output length =
+                    # video length. (apad+shortest alone let longer audio drag
+                    # the clip out with a frozen last frame.)
+                    vid_dur = frames.shape[0] / float(fps) if fps else 0.0
+                    cmd += ["-af", "apad", "-t", f"{vid_dur:.6f}"]
 
             cmd += [
                 "-c:v", "libx264", "-pix_fmt", "yuv420p",
@@ -360,14 +381,28 @@ class MpiSaveVideo:
             # frame-by-frame so peak overhead is one frame, not the whole video.
             frame_view = frames.numpy()
             proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.PIPE)
+
+            # Drain stderr on a thread. Otherwise ffmpeg — chattier once an audio
+            # input is added — fills the ~64KB stderr pipe, blocks, stops reading
+            # stdin, and we deadlock writing frames (node hangs forever). Reading
+            # stderr only after the write loop is the bug; read it concurrently.
+            import threading
+            stderr_chunks = []
+            drain = threading.Thread(
+                target=lambda: stderr_chunks.append(proc.stderr.read()), daemon=True
+            )
+            drain.start()
+
             try:
                 for f in frame_view:
                     proc.stdin.write(f.tobytes())
                 proc.stdin.close()
             except BrokenPipeError:
                 pass  # ffmpeg died early; its stderr below has the real reason
-            stderr = proc.stderr.read()
-            if proc.wait() != 0:
+            rc = proc.wait()
+            drain.join()
+            stderr = stderr_chunks[0] if stderr_chunks else b""
+            if rc != 0:
                 tail = stderr.decode("utf-8", "replace")[-2000:]
                 raise RuntimeError(f"[MpiSaveVideo] ffmpeg failed:\n{tail}")
         finally:
