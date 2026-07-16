@@ -88,14 +88,15 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 
 | Node | Description |
 |---|---|
-| **MpiScaledDimensions** | Scale image dimensions proportionally to a target size (use_max or use_min side). Returns width, height, and is_portrait boolean. |
+| **MpiScaledDimensions** | Scale image dimensions proportionally to a target size (use_max or use_min side). Returns width, height, is_portrait boolean, and the image resized to those dimensions (upscale_method selects the interpolation). |
 | **MpiAspectRatio** | Calculate aspect ratio from width/height (returns 1:1, 4:3, 3:2, 16:9, 9:16, 2:3, 3:4). |
 | **MpiGetImageAtIndex** | Return the image at a specified index from a batch. Supports negative indexing (-1 = last). |
 | **MpiBboxToMask** | Convert bounding boxes (xyxy or xywh format) to mask tensors. |
 | **MpiGridDimensions** | Calculate grid dimensions and corrected source size for perfect tiling — avoids repeated tiles when fed to UltimateSDUpscale. Has auto mode. |
 | **MpiUpscaleModelScale** | Takes a `Load Upscale Model` node (or any UPSCALE_MODEL input) and reads its native scale (1x/2x/4x/8x) from the model's descriptor metadata. Outputs INT and FLOAT. fallback_scale used only if metadata is absent. |
-| **MpiLoadImageFromPath** | Load an image from a file path with an in-graph preview. Outputs image, mask, width, height. A channel combo (alpha/red/green/blue) selects the mask source. Blocks downstream execution if the path is empty. |
+| **MpiLoadImageFromPath** | Load an image from a file path with an in-graph preview. Outputs image, mask, width, height. A channel combo (alpha/red/green/blue) selects the mask source. Blocks downstream execution if the path is empty, unless block_if_empty is off (then outputs a blank 1x1 image so the graph continues). |
 | **MpiCrop** | Crop an image to width/height at a chosen anchor (center/left/right/top/bottom). width/height of 0 keep that dimension full; the crop is floored to a multiple of divisible_by. |
+| **MpiMaskSquareBbox** | Square bounding box around a mask, centered on the mask and clamped (shrunk if needed) to stay fully inside the image. Outputs a filled square MASK plus x, y, and side length. Optional padding around the tight box. |
 | **MpiMaskDebugInfo** | Print mask shape, dtype, and device info to the console for debugging. |
 | **MpiAddImageToList** | Append an image to a list of images. |
 
@@ -171,8 +172,8 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | Node | Description |
 |---|---|
 | **MpiSaveVideo** | Fast save-video node with no in-graph preview and optional audio. Encodes an IMAGE frame batch (+ optional AUDIO) to a single .mp4 in one libx264 pass, on the engine — much faster than CreateVideo+SaveVideo for video export, and remote gens transfer only the final mp4. Toggle audio with the `use_audio` boolean; output length is pinned to the video (short audio padded, long audio trimmed), or flip `truncate_to_audio` to cut the clip to the audio instead. GPU-agnostic (no nvenc). |
-| **MpiLoadVideo** | Fast, no-frills video loader by path. Decodes frames + audio and outputs source info (fps, frame_count, duration, width, height, has_audio) in one ffmpeg pass — no in-graph preview, no VHS param surface, so it loads much faster than Load Video (Path). Input named `string` to match MpiString / MpiAnyChecker; empty/missing path blocks downstream. |
-| **MpiLoadAudio** | Load audio from a file path into a ComfyUI AUDIO object, like the built-in Load Audio but driven by a `string` path (matches MpiString / MpiAnyChecker). Works on anything ffmpeg reads, including the audio track of a video. Empty/missing/audio-less path blocks downstream. |
+| **MpiLoadVideo** | Fast, no-frills video loader by path. Decodes frames + audio and outputs source info (fps, frame_count, duration, width, height, has_audio) in one ffmpeg pass — no in-graph preview, no VHS param surface, so it loads much faster than Load Video (Path). Input named `string` to match MpiString / MpiAnyChecker; empty/missing path blocks downstream, unless block_if_empty is off (then outputs a blank 1x1 image + silent audio). |
+| **MpiLoadAudio** | Load audio from a file path into a ComfyUI AUDIO object, like the built-in Load Audio but driven by a `string` path (matches MpiString / MpiAnyChecker). Works on anything ffmpeg reads, including the audio track of a video. Empty/missing/audio-less path blocks downstream, unless block_if_empty is off (then outputs silent audio). |
 
 ---
 

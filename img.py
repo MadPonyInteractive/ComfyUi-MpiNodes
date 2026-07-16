@@ -239,28 +239,44 @@ class MpiScaledDimensions:
                         "label_off": "use_min",
                     },
                 ),
+                "upscale_method": (
+                    ["lanczos", "bicubic", "bilinear", "nearest-exact", "area"],
+                    {
+                        "default": "lanczos",
+                        "tooltip": "Interpolation used to resize the scaled_image output.",
+                    },
+                ),
             }
         }
 
-    RETURN_TYPES = ("INT", "INT", "BOOLEAN")
-    RETURN_NAMES = ("scaled_width", "scaled_height", "is_portrait")
+    RETURN_TYPES = ("INT", "INT", "BOOLEAN", "IMAGE")
+    RETURN_NAMES = ("scaled_width", "scaled_height", "is_portrait", "scaled_image")
     CATEGORY = "MpiNodes/ImgOps"
-    DESCRIPTION = "Scale image dimensions proportionally to target size"
+    DESCRIPTION = "Scale image dimensions proportionally to target size, and output the image resized to those dimensions."
     FUNCTION = "compute"
 
-    def compute(self, image, size, side):
+    def compute(self, image, size, side, upscale_method="lanczos"):
         B, H, W, C = image.shape
         is_portrait = H > W
 
         if not size:
-            return (W, H, is_portrait)
+            return (W, H, is_portrait, image)
 
         target_dim = max(H, W) if side else min(H, W)
         scale = size / target_dim
         scaled_width = int(W * scale)
         scaled_height = int(H * scale)
 
-        return (scaled_width, scaled_height, is_portrait)
+        import comfy.utils  # type: ignore
+
+        # common_upscale wants NCHW; IMAGE tensors are NHWC.
+        samples = image.movedim(-1, 1)
+        samples = comfy.utils.common_upscale(
+            samples, scaled_width, scaled_height, upscale_method, "disabled"
+        )
+        scaled_image = samples.movedim(1, -1)
+
+        return (scaled_width, scaled_height, is_portrait, scaled_image)
 
 
 class MpiGetImageAtIndex:
@@ -345,6 +361,13 @@ class MpiLoadImageFromPath(PreviewImage):
                         "tooltip": "Which channel to output as the mask. 'alpha' inverts the alpha channel like LoadImage; red/green/blue take that color channel directly.",
                     },
                 ),
+                "block_if_empty": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "ON: empty/missing path blocks downstream execution. OFF: outputs a blank 1x1 image so the graph continues.",
+                    },
+                ),
             },
             "hidden": {
                 "prompt": "PROMPT",
@@ -358,16 +381,21 @@ class MpiLoadImageFromPath(PreviewImage):
     CATEGORY = "MpiNodes/ImgOps"
     DESCRIPTION = (
         "Load an image from a file path and preview it in-graph. Also outputs "
-        "width and height. If the path is empty, downstream execution is "
-        "blocked (no need for a separate blocker node)."
+        "width and height. If the path is empty/missing, downstream execution is "
+        "blocked (no need for a separate blocker node) unless block_if_empty is "
+        "off, in which case it outputs a blank 1x1 image so the graph continues."
     )
     FUNCTION = "load"
 
-    def load(self, string, channel="alpha", prompt=None, extra_pnginfo=None):
+    def load(self, string, channel="alpha", block_if_empty=True, prompt=None, extra_pnginfo=None):
         path = (string or "").strip()
         if not path or not os.path.isfile(path):
-            blocked = ExecutionBlocker(None)
-            return {"ui": {"images": []}, "result": (blocked, blocked, 0, 0)}
+            if block_if_empty:
+                blocked = ExecutionBlocker(None)
+                return {"ui": {"images": []}, "result": (blocked, blocked, 0, 0)}
+            image = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
+            mask = torch.zeros((1, 1, 1), dtype=torch.float32)
+            return {"ui": {"images": []}, "result": (image, mask, 0, 0)}
 
         image, mask = load_image_from_path(path, channel)
         _, h, w, _ = image.shape
@@ -488,7 +516,107 @@ class MpiCrop:
         return (cropped, target_w, target_h)
 
 
+def square_bbox_from_mask(mask, padding=0):
+    """Tight bbox of the mask's nonzero pixels, expanded to a centered square
+    that is clamped (and shrunk if needed) to stay fully inside the image.
+    mask: (H, W) tensor. Returns (x, y, size) ints, or None if mask is empty."""
+    H, W = mask.shape
+    ys, xs = torch.where(mask > 0)
+    if ys.numel() == 0:
+        return None
+
+    x_min = int(xs.min())
+    x_max = int(xs.max()) + 1  # exclusive
+    y_min = int(ys.min())
+    y_max = int(ys.max()) + 1
+
+    x_min = max(0, x_min - padding)
+    y_min = max(0, y_min - padding)
+    x_max = min(W, x_max + padding)
+    y_max = min(H, y_max + padding)
+
+    # Square side = longer edge of the tight box, but never bigger than the image.
+    side = max(x_max - x_min, y_max - y_min)
+    side = min(side, W, H)
+
+    # Center the square on the tight box's center, then clamp into the image.
+    cx = (x_min + x_max) / 2
+    cy = (y_min + y_max) / 2
+    x = int(round(cx - side / 2))
+    y = int(round(cy - side / 2))
+    x = max(0, min(x, W - side))
+    y = max(0, min(y, H - side))
+
+    return x, y, side
+
+
+class MpiMaskSquareBbox:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mask": ("MASK",),
+                "padding": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 4096,
+                        "tooltip": "Pixels added around the tight mask box before squaring.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("MASK", "INT", "INT", "INT")
+    RETURN_NAMES = ("square_mask", "x", "y", "size")
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = (
+        "Square bounding box around a mask, centered on the mask and clamped "
+        "(shrunk if needed) to stay fully inside the image. Outputs a filled "
+        "square MASK plus its x, y, and side length."
+    )
+    FUNCTION = "compute"
+
+    def compute(self, mask, padding):
+        # MASK is (B, H, W); operate on the first item, keep the batch dim out.
+        single = mask[0] if mask.dim() == 3 else mask
+        H, W = single.shape
+
+        box = square_bbox_from_mask(single, padding)
+        out = torch.zeros((1, H, W), dtype=mask.dtype, device=mask.device)
+        if box is None:
+            return (out, 0, 0, 0)
+
+        x, y, size = box
+        out[:, y:y + size, x:x + size] = 1.0
+        return (out, x, y, size)
+
+
 if __name__ == "__main__":
+    # square_bbox_from_mask: tight box -> centered square, clamped to image
+    m = torch.zeros((100, 200))
+    m[40:60, 90:110] = 1.0            # 20x20 mask centered at (100, 50)
+    x, y, s = square_bbox_from_mask(m)
+    assert s == 20, s
+    assert (x, y) == (90, 40), (x, y)  # already square, unchanged
+
+    m2 = torch.zeros((100, 200))
+    m2[10:90, 95:105] = 1.0           # tall 80x10 -> square side 80, centered
+    x, y, s = square_bbox_from_mask(m2)
+    assert s == 80, s
+    assert y == 10, y                  # fits vertically
+    assert x == 60, x                  # centered on x=100, clamped inside 200
+
+    m3 = torch.zeros((50, 200))
+    m3[5:45, 90:180] = 1.0            # 40 tall, 90 wide, but image is 50 tall
+    x, y, s = square_bbox_from_mask(m3)
+    assert s == 50, s                  # shrunk to image height
+    assert y == 0 and 0 <= x <= 150    # clamped fully inside
+
+    assert square_bbox_from_mask(torch.zeros((10, 10))) is None
+    print("square_bbox ok")
+
     # crop_offset anchoring
     assert crop_offset(100, 40, "left", "x") == 0
     assert crop_offset(100, 40, "right", "x") == 60

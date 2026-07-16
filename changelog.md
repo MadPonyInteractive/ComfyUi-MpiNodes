@@ -60,3 +60,11 @@
 - MpiCombo1 through MpiCombo10 - removed (txt-file-backed, unmaintained)
 - removed web/combos.js — the only frontend network call in the pack (a same-origin fetch of combos.json); likely the registry scanner's python_network_operations false-positive trigger
 # Version: V1.2.5
+
+- MpiMaskSquareBbox - added
+- MpiLoadImageFromPath - added block_if_empty toggle (off outputs a blank 1x1 image instead of blocking)
+- MpiLoadVideo - added block_if_empty toggle (off outputs a blank image + silent audio instead of blocking)
+- MpiLoadAudio - added block_if_empty toggle (off outputs silent audio instead of blocking)
+- MpiScaledDimensions - added scaled_image output (image resized to the computed dimensions) + upscale_method input
+
+# Version: V1.2.6

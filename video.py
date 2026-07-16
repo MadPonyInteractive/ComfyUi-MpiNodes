@@ -185,6 +185,13 @@ class MpiLoadVideo:
                         "tooltip": "Video file path. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
                     },
                 ),
+                "block_if_empty": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "ON: empty/missing path blocks downstream execution. OFF: outputs a blank 1x1 image + silent audio so the graph continues.",
+                    },
+                ),
             },
         }
 
@@ -206,23 +213,32 @@ class MpiLoadVideo:
         "ffmpeg pass. No in-graph preview and no VHS param surface, so it "
         "loads much faster than Load Video (Path). Also outputs has_audio "
         "(True when the file contains an audio track). Input is named 'string' "
-        "to match MpiString / MpiAnyChecker. Empty/missing path blocks downstream."
+        "to match MpiString / MpiAnyChecker. Empty/missing path blocks downstream "
+        "unless block_if_empty is off, in which case it outputs a blank 1x1 image "
+        "+ silent audio so the graph continues."
     )
     FUNCTION = "load"
 
-    def load(self, string):
+    def _empty(self, block_if_empty):
         from comfy_execution.graph import ExecutionBlocker  # type: ignore
+        import torch  # type: ignore
 
+        if block_if_empty:
+            b = ExecutionBlocker(None)
+            return (b, b, 0.0, 0, 0.0, 0, 0, False)
+        image = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
+        audio = {"waveform": torch.zeros((1, 1, 1), dtype=torch.float32), "sample_rate": 44100}
+        return (image, audio, 0.0, 0, 0.0, 0, 0, False)
+
+    def load(self, string, block_if_empty=True):
         path = resolve_video_path((string or "").strip())
         ffmpeg = find_ffmpeg()
         if not path or not os.path.isfile(path) or not ffmpeg:
-            b = ExecutionBlocker(None)
-            return (b, b, 0.0, 0, 0.0, 0, 0, False)
+            return self._empty(block_if_empty)
 
         w, h, fps = _probe_video_meta(ffmpeg, path)
         if w == 0 or h == 0:
-            b = ExecutionBlocker(None)
-            return (b, b, 0.0, 0, 0.0, 0, 0, False)
+            return self._empty(block_if_empty)
 
         images, n = _decode_frames(ffmpeg, path, w, h)
         audio = _load_audio(ffmpeg, path)
@@ -243,6 +259,13 @@ class MpiLoadAudio:
                         "tooltip": "Audio (or video) file path. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
                     },
                 ),
+                "block_if_empty": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "tooltip": "ON: empty/missing/audio-less path blocks downstream execution. OFF: outputs silent audio so the graph continues.",
+                    },
+                ),
             },
         }
 
@@ -254,21 +277,28 @@ class MpiLoadAudio:
         "built-in Load Audio but driven by a path string (matches MpiString / "
         "MpiAnyChecker). Works on any file ffmpeg can read, including pulling "
         "the audio track out of a video. Empty/missing/audio-less path blocks "
-        "downstream."
+        "downstream unless block_if_empty is off, in which case it outputs "
+        "silent audio so the graph continues."
     )
     FUNCTION = "load"
 
-    def load(self, string):
+    def _empty(self, block_if_empty):
         from comfy_execution.graph import ExecutionBlocker  # type: ignore
+        import torch  # type: ignore
 
+        if block_if_empty:
+            return (ExecutionBlocker(None),)
+        return ({"waveform": torch.zeros((1, 1, 1), dtype=torch.float32), "sample_rate": 44100},)
+
+    def load(self, string, block_if_empty=True):
         path = resolve_video_path((string or "").strip())
         ffmpeg = find_ffmpeg()
         if not path or not os.path.isfile(path) or not ffmpeg:
-            return (ExecutionBlocker(None),)
+            return self._empty(block_if_empty)
 
         audio = _load_audio(ffmpeg, path)
         if audio is None:
-            return (ExecutionBlocker(None),)
+            return self._empty(block_if_empty)
         return (audio,)
 
 
