@@ -31,6 +31,10 @@ from .img import (
     MpiLoadImageFromPath,
     MpiCrop,
     MpiMaskSquareBbox,
+    MpiBox,
+    MpiFromBox,
+    MpiBoxCrop,
+    MpiBoxMask,
 )
 from .text_list_replace import MpiTextListReplace
 from .text_list_join import MpiTextListJoin
@@ -146,6 +150,10 @@ NODE_CLASS_MAPPINGS = {
     "MpiLoadImageFromPath": MpiLoadImageFromPath,
     "MpiCrop": MpiCrop,
     "MpiMaskSquareBbox": MpiMaskSquareBbox,
+    "MpiBox": MpiBox,
+    "MpiFromBox": MpiFromBox,
+    "MpiBoxCrop": MpiBoxCrop,
+    "MpiBoxMask": MpiBoxMask,
     "MpiPromptOverride": MpiPromptOverride,
     "MpiPromptOverrideSeed": MpiPromptOverrideSeed,
     "MpiJsonLoad": MpiJsonLoad,
@@ -235,6 +243,10 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiLoadImageFromPath": "Mpi Load Image From Path",
     "MpiCrop": "Mpi Crop",
     "MpiMaskSquareBbox": "Mpi Mask Square Bbox",
+    "MpiBox": "Mpi Box",
+    "MpiFromBox": "Mpi From Box",
+    "MpiBoxCrop": "Mpi Box Crop",
+    "MpiBoxMask": "Mpi Box Mask",
     "MpiGridDimensions": "Mpi Grid Dimensions",
     "MpiPromptOverride": "Mpi Prompt Override",
     "MpiPromptOverrideSeed": "Mpi Prompt Override Seed",

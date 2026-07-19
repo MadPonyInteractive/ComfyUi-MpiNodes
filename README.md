@@ -54,7 +54,7 @@ Primitive operations for comparisons, type conversions, rounding, and boolean lo
 | **MpiBlocker** | Manual gate with a toggle: pass input through when set to `continue`, block downstream execution when set to `block`. A one-output if/else. |
 | **MpiAnyChecker** | Pass any value through unchanged and output a `has_value` boolean — true if non-empty, false if empty. Same emptiness rules as MpiAnyBlocker. |
 | **MpiSeedPassthrough** | Pass any value through and emit a `seed`. Forces the workflow to re-run every time (via `IS_CHANGED`) so seed-less workflows don't get stuck on cached outputs. Leave `any` unconnected to use as a pure seed source. |
-| **MpiLogger** | Log any input value to the console with a prefix. |
+| **MpiLogger** | End-of-chain logger with no output — prints when its input arrives. `mode="value"` logs the input value with a prefix; `mode="message"` logs only the message text, marking that the point was reached without dumping the input. |
 | **MpiExecLogger** | Pass any input through to its output while logging a message to the console — wire inline to print workflow progress. |
 
 ---
@@ -97,6 +97,10 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | **MpiLoadImageFromPath** | Load an image from a file path with an in-graph preview. Outputs image, mask, width, height. A channel combo (alpha/red/green/blue) selects the mask source. Blocks downstream execution if the path is empty, unless block_if_empty is off (then outputs a blank 1x1 image so the graph continues). |
 | **MpiCrop** | Crop an image to width/height at a chosen anchor (center/left/right/top/bottom). width/height of 0 keep that dimension full; the crop is floored to a multiple of divisible_by. |
 | **MpiMaskSquareBbox** | Square bounding box around a mask, centered on the mask and clamped (shrunk if needed) to stay fully inside the image. Outputs a filled square MASK plus x, y, and side length. Optional padding around the tight box. |
+| **MpiBox** | Build an `MPI_BOX` rectangle from width/height/x/y, where x/y are the **top-left** corner. One wire carries a region into any box-aware node instead of four loose INT sockets. Consumers clamp the box to the image, so out-of-bounds values are safe. |
+| **MpiFromBox** | Unpack an `MPI_BOX` back into width, height, x, y integers — the escape hatch for feeding raw INTs to other nodes. |
+| **MpiBoxCrop** | Crop an image to an `MPI_BOX` region. Outputs the cropped image plus the clamped box actually used. A box fully outside the image passes the image through unchanged. |
+| **MpiBoxMask** | Build a mask the size of the image — black with a white rectangle at the `MPI_BOX` region. Outputs the mask plus the clamped box actually drawn. |
 | **MpiMaskDebugInfo** | Print mask shape, dtype, and device info to the console for debugging. |
 | **MpiAddImageToList** | Append an image to a list of images. |
 

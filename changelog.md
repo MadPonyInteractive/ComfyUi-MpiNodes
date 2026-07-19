@@ -68,3 +68,10 @@
 - MpiScaledDimensions - added scaled_image output (image resized to the computed dimensions) + upscale_method input
 
 # Version: V1.2.6
+- MpiLogger - added message input and mode dropdown ("value" logs the input value, "message" logs only the message when the input arrives)
+- MpiBox - added (MPI_BOX type: width/height/x/y rectangle, x/y = top-left)
+- MpiFromBox - added (unpacks MPI_BOX into width, height, x, y)
+- MpiBoxCrop - added (crops an image to an MPI_BOX, outputs image + clamped box)
+- MpiBoxMask - added (mask the size of the image with the MPI_BOX drawn as a white rectangle, outputs mask + clamped box)
+
+# Version: V1.2.7

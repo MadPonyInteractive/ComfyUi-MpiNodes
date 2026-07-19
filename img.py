@@ -516,6 +516,124 @@ class MpiCrop:
         return (cropped, target_w, target_h)
 
 
+def clamp_box(box, W, H):
+    """Intersect an (x, y, w, h) MPI_BOX with a WxH image.
+    Returns (x, y, w, h) clamped inside the image; w/h may come back 0 if the
+    box lies fully outside."""
+    x, y, w, h = box
+    x0 = max(0, min(int(x), W))
+    y0 = max(0, min(int(y), H))
+    x1 = max(0, min(int(x) + int(w), W))
+    y1 = max(0, min(int(y) + int(h), H))
+    return x0, y0, max(0, x1 - x0), max(0, y1 - y0)
+
+
+class MpiBox:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "width": ("INT", {"default": 512, "min": 0, "max": 0xFFFFFFFF}),
+                "height": ("INT", {"default": 512, "min": 0, "max": 0xFFFFFFFF}),
+                "x": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFF,
+                              "tooltip": "Left edge of the box, in pixels."}),
+                "y": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFF,
+                              "tooltip": "Top edge of the box, in pixels."}),
+            }
+        }
+
+    RETURN_TYPES = ("MPI_BOX",)
+    RETURN_NAMES = ("mpi_box",)
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = (
+        "Build an MPI_BOX rectangle from width/height/x/y. x/y are the top-left "
+        "corner. Consumers clamp the box to the image, so out-of-bounds is safe."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, width, height, x, y):
+        return ((x, y, width, height),)
+
+
+class MpiFromBox:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mpi_box": ("MPI_BOX", {"forceInput": True}),
+            }
+        }
+
+    RETURN_TYPES = ("INT", "INT", "INT", "INT")
+    RETURN_NAMES = ("width", "height", "x", "y")
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = "Unpack an MPI_BOX back into width, height, x, y integers."
+    FUNCTION = "doit"
+
+    def doit(self, mpi_box):
+        x, y, w, h = mpi_box
+        return (w, h, x, y)
+
+
+class MpiBoxCrop:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "mpi_box": ("MPI_BOX", {"forceInput": True}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "MPI_BOX")
+    RETURN_NAMES = ("image", "mpi_box")
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = (
+        "Crop an image to an MPI_BOX region. The box is clamped to the image; "
+        "a box fully outside the image passes the image through unchanged. "
+        "Also outputs the clamped box, so downstream nodes see the region "
+        "actually used."
+    )
+    FUNCTION = "crop"
+
+    def crop(self, image, mpi_box):
+        _, H, W, _ = image.shape
+        x, y, w, h = clamp_box(mpi_box, W, H)
+        # ponytail: empty intersection passes through rather than erroring mid-graph
+        if w == 0 or h == 0:
+            return (image, (x, y, 0, 0))
+        return (image[:, y:y + h, x:x + w, :], (x, y, w, h))
+
+
+class MpiBoxMask:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "mpi_box": ("MPI_BOX", {"forceInput": True}),
+            }
+        }
+
+    RETURN_TYPES = ("MASK", "MPI_BOX")
+    RETURN_NAMES = ("mask", "mpi_box")
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = (
+        "Build a mask the size of the image, black except for a white rectangle "
+        "at the MPI_BOX region. The box is clamped to the image. Also outputs "
+        "the clamped box, so downstream nodes see the region actually drawn."
+    )
+    FUNCTION = "make_mask"
+
+    def make_mask(self, image, mpi_box):
+        B, H, W, _ = image.shape
+        x, y, w, h = clamp_box(mpi_box, W, H)
+        mask = torch.zeros((B, H, W), dtype=torch.float32, device=image.device)
+        if w and h:
+            mask[:, y:y + h, x:x + w] = 1.0
+        return (mask, (x, y, w, h))
+
+
 def square_bbox_from_mask(mask, padding=0):
     """Tight bbox of the mask's nonzero pixels, expanded to a centered square
     that is clamped (and shrunk if needed) to stay fully inside the image.
