@@ -76,3 +76,4 @@
 
 # Version: V1.2.7
 - MpiInpaintHeal - added (matches an inpainted region's colour and grain to a ring of untouched pixels around the mask, fixing the colour drift and flat texture generative fills leave behind)
+- MpiTextContains - added (true if any listed word or phrase appears in the input text as a whole word - multiline box separated by commas or new lines, case-insensitive, plural-aware and spacing-agnostic; whitelist/blacklist check)

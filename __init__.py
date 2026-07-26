@@ -54,6 +54,7 @@ from .logic import (
     MpiText,
     MpiListCount,
     MpiListRange,
+    MpiTextContains,
     MpiReroute,
     MpiAnyBlocker,
     MpiBlocker,
@@ -125,6 +126,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiText": MpiText,
     "MpiListCount": MpiListCount,
     "MpiListRange": MpiListRange,
+    "MpiTextContains": MpiTextContains,
     "MpiReroute": MpiReroute,
     "MpiAnyBlocker": MpiAnyBlocker,
     "MpiBlockIfEmpty": MpiAnyBlocker,  # alias: keeps pre-rename saved workflows loading
@@ -220,6 +222,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiText": "Mpi Text",
     "MpiListCount": "Mpi List Count",
     "MpiListRange": "Mpi List Range",
+    "MpiTextContains": "Mpi Text Contains",
     "MpiReroute": "Mpi Reroute",
     "MpiAnyBlocker": "Mpi Any Blocker",
     "MpiBlockIfEmpty": "Mpi Any Blocker",

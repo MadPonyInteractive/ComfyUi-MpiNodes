@@ -1,4 +1,5 @@
 import math
+import re
 from comfy_execution.graph import ExecutionBlocker  # type: ignore
 from .help_funcs import round_to_multiple, is_empty_value, AlwaysEqualProxy
 
@@ -681,3 +682,55 @@ class MpiListRange:
 
         sliced = list_input[s : e + 1]
         return (sliced, len(sliced))
+
+
+class MpiTextContains:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "text": ("STRING", {"forceInput": True}),
+                "words": (
+                    "STRING",
+                    {
+                        "multiline": True,
+                        "default": "",
+                        "tooltip": "Words or phrases to look for inside text, separated by commas or new lines. Case-insensitive, whole words only ('cat' matches 'cat' and 'cats' but not 'catalogue'). Phrases ignore spacing, so 'bird in a tree' matches across line breaks. Irregular plurals (child/children) need their own entry.",
+                    },
+                ),
+            }
+        }
+
+    CATEGORY = "MpiNodes/Logic"
+    DESCRIPTION = "Check if any comma separated whole word is present in the input text. Use as a whitelist/blacklist check."
+    RETURN_TYPES = ("BOOLEAN",)
+    RETURN_NAMES = ("boolean",)
+    FUNCTION = "contains"
+
+    def contains(self, text: str, words: str):
+        # Multiline field, so a new line separates entries just like a comma.
+        needles = [w.strip() for w in re.split(r"[,\n]", words) if w.strip()]
+        if not needles:
+            return (False,)
+
+        # Any run of whitespace matches any other, so a wrapped or double-spaced
+        # prompt still matches a multi-word entry like 'bird in a tree'.
+        def esc(phrase: str):
+            return r"\s+".join(re.escape(t) for t in phrase.split())
+
+        parts = []
+        for w in needles:
+            # Also match the regular plural: cat/cats, box/boxes, baby/babies.
+            # ponytail: rule-based, so irregulars (child/children, knife/knives)
+            # still need their own entry in the list.
+            if re.search(r"[b-df-hj-np-tv-z]y$", w, re.IGNORECASE):
+                stem = esc(w[:-1]) + "(?:y|ies)"
+            elif re.search(r"(?:s|x|z|ch|sh)$", w, re.IGNORECASE):
+                stem = esc(w) + "(?:es)?"
+            else:
+                stem = esc(w) + "s?"
+            # \b keeps 'cat' from matching 'catalogue' while still matching
+            # ',cat' / 'cat,' / 'a cat sits'.
+            parts.append(rf"\b{stem}\b")
+
+        return (re.search("|".join(parts), text, re.IGNORECASE) is not None,)
