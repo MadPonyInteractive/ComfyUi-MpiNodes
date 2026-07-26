@@ -125,6 +125,8 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | **MpiLoraModel** | Apply a LoRA to a model only, with strength control. |
 | **MpiLoraModelClip** | Apply a LoRA to both model and clip with independent strength controls. |
 | **MpiDoubleLora** | Apply the same LoRA to two models and clips simultaneously with strength controls. |
+| **MpiStyleSelector** | Style router: one `selector` integer plus a list of trigger words, feeding a chain of MpiStyleLoras banks. Outputs an `MPI_STYLE` bundle. |
+| **MpiStyleLoras** | A bank of 5 LoRA slots for an MpiStyleSelector — applies only the LoRA matching the selector. Chainable (bank 1 = selector 1-5, bank 2 = 6-10, …), outputs model, clip and prompt. |
 | **MpiFromCheckpoint** | Extract model, clip, and VAE from a checkpoint. |
 | **MpiToCheckpoint** | Combine model, clip, and VAE into a checkpoint. |
 

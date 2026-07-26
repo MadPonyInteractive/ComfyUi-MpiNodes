@@ -71,7 +71,13 @@ from .switches import (
     MpiLoraSwitch,
     MpiAnySwitch,
 )
-from .loras import MpiDoubleLora, MpiLoraModel, MpiLoraModelClip
+from .loras import (
+    MpiDoubleLora,
+    MpiLoraModel,
+    MpiLoraModelClip,
+    MpiStyleSelector,
+    MpiStyleLoras,
+)
 from .json import MpiJsonLoad, MpiJsonSave
 from .if_else import (
     MpiIfElse,
@@ -147,6 +153,8 @@ NODE_CLASS_MAPPINGS = {
     "MpiDoubleLora": MpiDoubleLora,
     "MpiLoraModel": MpiLoraModel,
     "MpiLoraModelClip": MpiLoraModelClip,
+    "MpiStyleSelector": MpiStyleSelector,
+    "MpiStyleLoras": MpiStyleLoras,
     "MpiAspectRatio": MpiAspectRatio,
     "MpiGetImageAtIndex": MpiGetImageAtIndex,
     "MpiUpscaleModelScale": MpiUpscaleModelScale,
@@ -242,6 +250,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiDoubleLora": "Mpi Double Lora Loader",
     "MpiLoraModel": "Mpi Lora Model",
     "MpiLoraModelClip": "Mpi Lora Model Clip",
+    "MpiStyleSelector": "Mpi Style Selector",
+    "MpiStyleLoras": "Mpi Style Loras",
     "MpiAspectRatio": "Mpi Get Aspect Ratio",
     "MpiGetImageAtIndex": "Mpi Get Image At Index",
     "MpiUpscaleModelScale": "Mpi Upscale Model Scale",
