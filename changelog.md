@@ -75,3 +75,4 @@
 - MpiBoxMask - added (mask the size of the image with the MPI_BOX drawn as a white rectangle, outputs mask + clamped box)
 
 # Version: V1.2.7
+- MpiInpaintHeal - added (matches an inpainted region's colour and grain to a ring of untouched pixels around the mask, fixing the colour drift and flat texture generative fills leave behind)

@@ -101,6 +101,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | **MpiFromBox** | Unpack an `MPI_BOX` back into width, height, x, y integers — the escape hatch for feeding raw INTs to other nodes. |
 | **MpiBoxCrop** | Crop an image to an `MPI_BOX` region. Outputs the cropped image plus the clamped box actually used. A box fully outside the image passes the image through unchanged. |
 | **MpiBoxMask** | Build a mask the size of the image — black with a white rectangle at the `MPI_BOX` region. Outputs the mask plus the clamped box actually drawn. |
+| **MpiInpaintHeal** | Heal an inpainted region against the real pixels around it — corrects colour drift and restores fine grain by matching a ring of untouched pixels hugging the mask. Unlike a colour-match on a rectangular crop, the ring never contains the removed object, so it cannot pull the fill toward it. Run after stitching. |
 | **MpiMaskDebugInfo** | Print mask shape, dtype, and device info to the console for debugging. |
 | **MpiAddImageToList** | Append an image to a list of images. |
 

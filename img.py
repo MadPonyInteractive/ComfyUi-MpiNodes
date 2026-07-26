@@ -711,6 +711,150 @@ class MpiMaskSquareBbox:
         return (out, x, y, size)
 
 
+def _box_blur(img, radius):
+    """(H, W, C) box blur via avg_pool2d with reflect padding. radius 0 = no-op."""
+    if radius < 1:
+        return img
+    k = 2 * radius + 1
+    x = img.permute(2, 0, 1).unsqueeze(0)               # 1,C,H,W
+    x = torch.nn.functional.pad(x, (radius,) * 4, mode="reflect")
+    x = torch.nn.functional.avg_pool2d(x, k, stride=1)
+    return x.squeeze(0).permute(1, 2, 0)
+
+
+def _gaussian_feather(mask, radius):
+    """Blur a (H, W) 0/1 mask into a soft blend weight. Separable box passes
+    approximate a gaussian closely enough for feathering and stay cheap."""
+    if radius < 1:
+        return mask
+    w = mask.unsqueeze(-1)
+    for _ in range(3):                                   # 3 box passes ~ gaussian
+        w = _box_blur(w, max(1, radius // 3))
+    return w.squeeze(-1).clamp(0, 1)
+
+
+def _ring_of(mask, ring_px):
+    """Band of untouched pixels hugging the mask: dilate, then subtract the mask."""
+    if ring_px < 1:
+        return torch.zeros_like(mask, dtype=torch.bool)
+    k = 2 * ring_px + 1
+    x = mask.view(1, 1, *mask.shape)
+    grown = torch.nn.functional.max_pool2d(x, k, stride=1, padding=ring_px)
+    return (grown.view(*mask.shape) > 0.5) & (mask <= 0.5)
+
+
+def heal_region(image, mask, color_strength, grain_strength, ring_px, feather_px, radius=1):
+    """Match an inpainted region's colour and grain to the real pixels around it.
+
+    Generative fills drift: their colour statistics wander from the surrounding
+    pixels (invisible on foliage, obvious on skin) and their fine grain lands
+    well under the real thing. Both are corrected against a RING of untouched
+    pixels hugging the mask -- never a rectangular crop, which would still
+    contain the object being removed and drag the correction toward it.
+
+    image: (H, W, C) float 0-1. mask: (H, W) float 0-1. Returns (H, W, C).
+    """
+    m = mask > 0.5
+    ring = _ring_of(mask, ring_px)
+    if not m.any() or not ring.any():
+        return image                                     # nothing to match against
+
+    out = image.clone()
+    fill, real = image[m], image[ring]
+
+    if color_strength:
+        delta = real.mean(dim=0) - fill.mean(dim=0)
+        out[m] = out[m] + delta * color_strength
+
+    if grain_strength:
+        # Scale the fill's OWN high-frequency residual up to the ring's amplitude.
+        # Amplifying real detail can't repeat or invent texture the way tiling
+        # donor patches would.
+        hf = out - _box_blur(out, radius)
+        f_std = hf[m].std(dim=0)
+        r_std = hf[ring].std(dim=0)
+        gain = torch.where(f_std > 1e-6, r_std / f_std.clamp(min=1e-6),
+                           torch.ones_like(f_std))
+        gain = 1.0 + (gain.clamp(1.0, 4.0) - 1.0) * grain_strength  # only ever add
+        out[m] = out[m] + hf[m] * (gain - 1.0)
+
+    if feather_px:
+        # Feather the correction itself, or its own edge becomes a new seam.
+        w = _gaussian_feather(mask, feather_px).unsqueeze(-1)
+        out = image * (1 - w) + out * w
+
+    return out.clamp(0, 1)
+
+
+class MpiInpaintHeal:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "image": ("IMAGE",),
+                "mask": ("MASK",),
+                "color_strength": (
+                    "FLOAT",
+                    {
+                        "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05,
+                        "tooltip": "Shift the filled region's colour toward the "
+                                   "surrounding ring. 0 disables.",
+                    },
+                ),
+                "grain_strength": (
+                    "FLOAT",
+                    {
+                        "default": 1.0, "min": 0.0, "max": 1.0, "step": 0.05,
+                        "tooltip": "Lift the filled region's fine grain toward the "
+                                   "surrounding ring. 0 disables.",
+                    },
+                ),
+                "ring_px": (
+                    "INT",
+                    {
+                        "default": 31, "min": 1, "max": 512,
+                        "tooltip": "Width of the untouched band sampled as the "
+                                   "reference. Wide enough for a stable average, "
+                                   "narrow enough to stay locally lit.",
+                    },
+                ),
+                "feather_px": (
+                    "INT",
+                    {
+                        "default": 15, "min": 0, "max": 256,
+                        "tooltip": "Softens the correction's edge so it does not "
+                                   "become a visible seam of its own.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = (
+        "Heal an inpainted region against the real pixels around it. Corrects "
+        "colour drift and restores fine grain by matching a ring of untouched "
+        "pixels hugging the mask -- unlike a colour-match on a rectangular crop, "
+        "which still contains the removed object and pulls the fill toward it. "
+        "Run AFTER stitching, with the mask of the region that was regenerated."
+    )
+    FUNCTION = "heal"
+
+    def heal(self, image, mask, color_strength, grain_strength, ring_px, feather_px):
+        B = image.shape[0]
+        H, W = image.shape[1:3]
+        out = []
+        for i in range(B):
+            m = mask[i] if mask.dim() == 3 and mask.shape[0] > i else mask.reshape(-1, *mask.shape[-2:])[0]
+            if m.shape != (H, W):
+                m = torch.nn.functional.interpolate(
+                    m.view(1, 1, *m.shape), size=(H, W), mode="bilinear", align_corners=False
+                ).view(H, W)
+            out.append(heal_region(image[i], m.to(image.device),
+                                   color_strength, grain_strength, ring_px, feather_px))
+        return (torch.stack(out),)
+
+
 if __name__ == "__main__":
     # square_bbox_from_mask: tight box -> centered square, clamped to image
     m = torch.zeros((100, 200))
@@ -755,4 +899,33 @@ if __name__ == "__main__":
         assert False, "expected ValueError"
     except ValueError:
         pass
+
+    # heal_region: a dull, colour-shifted patch inside grainy surroundings
+    torch.manual_seed(0)
+    base = torch.full((80, 80, 3), 0.5) + torch.randn(80, 80, 3) * 0.04
+    hmask = torch.zeros((80, 80))
+    hmask[30:50, 30:50] = 1.0
+    hm = hmask > 0.5
+    patch = torch.full((20, 20, 3), 0.5) + torch.randn(20, 20, 3) * 0.01   # 4x less grain
+    patch[:, :, 2] -= 0.06                                                 # blue drift
+    broken = base.clone()
+    broken[30:50, 30:50] = patch
+
+    hring = _ring_of(hmask, 15)
+    before = (broken[hm].mean(dim=0) - broken[hring].mean(dim=0)).abs().mean()
+    fixed = heal_region(broken, hmask, 1.0, 1.0, ring_px=15, feather_px=0)
+    after = (fixed[hm].mean(dim=0) - fixed[hring].mean(dim=0)).abs().mean()
+    assert after < before / 5, (before.item(), after.item())      # colour converges
+
+    def _grain(img, sel):
+        return (img - _box_blur(img, 1))[sel].std().item()
+    assert _grain(fixed, hm) > _grain(broken, hm) * 1.5           # grain lifted
+    assert _grain(fixed, hm) <= _grain(base, hring) * 1.3         # but not overshot
+    # strengths at 0 and an empty mask must both be no-ops
+    assert torch.equal(heal_region(broken, hmask, 0.0, 0.0, 15, 0), broken)
+    assert torch.equal(heal_region(broken, torch.zeros((80, 80)), 1.0, 1.0, 15, 0), broken)
+    # untouched pixels must never move
+    assert torch.allclose(fixed[~hm], broken[~hm], atol=1e-6)
+    print("heal_region ok")
+
     print("ok")

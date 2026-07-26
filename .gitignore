@@ -6,3 +6,5 @@ node-publish.txt
 .claude/
 claude.md
 memory.md
+# MPI-kanban local artifact — not part of the pack
+.mpi_node_commit

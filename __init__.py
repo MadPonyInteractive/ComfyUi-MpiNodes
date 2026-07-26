@@ -35,6 +35,7 @@ from .img import (
     MpiFromBox,
     MpiBoxCrop,
     MpiBoxMask,
+    MpiInpaintHeal,
 )
 from .text_list_replace import MpiTextListReplace
 from .text_list_join import MpiTextListJoin
@@ -154,6 +155,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiFromBox": MpiFromBox,
     "MpiBoxCrop": MpiBoxCrop,
     "MpiBoxMask": MpiBoxMask,
+    "MpiInpaintHeal": MpiInpaintHeal,
     "MpiPromptOverride": MpiPromptOverride,
     "MpiPromptOverrideSeed": MpiPromptOverrideSeed,
     "MpiJsonLoad": MpiJsonLoad,
@@ -247,6 +249,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiFromBox": "Mpi From Box",
     "MpiBoxCrop": "Mpi Box Crop",
     "MpiBoxMask": "Mpi Box Mask",
+    "MpiInpaintHeal": "Mpi Inpaint Heal",
     "MpiGridDimensions": "Mpi Grid Dimensions",
     "MpiPromptOverride": "Mpi Prompt Override",
     "MpiPromptOverrideSeed": "Mpi Prompt Override Seed",
