@@ -114,6 +114,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 |---|---|
 | **MpiMath** | Evaluate a Python expression on inputs `a`, `b`, `c` (b and c optional). All `math` module functions are in scope. |
 | **MpiExpoFloat** | Apply a power curve to a 0–1 float: `value ^ exponent`, clamped to [0, 1]. |
+| **MpiClamp** | Clamp an int or float between `min_value` and `max_value`. With min 200 / max 1000: `400` stays `400`, `2000` becomes `1000`, `100` becomes `200`. Preserves int inputs. |
 | **MpiNormalizeValue** | Normalize a value from an input range to an output range with optional transforms (linear, inverse, log, exp) and clamping. |
 
 ---

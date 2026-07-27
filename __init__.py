@@ -64,7 +64,7 @@ from .logic import (
     MpiSeedPassthrough,
     MpiConditioningReroute,
 )
-from .math import MpiMath, MpiExpoFloat
+from .math import MpiMath, MpiExpoFloat, MpiClamp
 from .switches import (
     MpiStringInvSwitch,
     MpiAnyInvSwitch,
@@ -123,6 +123,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiCompare": MpiCompare,
     "MpiConvert": MpiConvert,
     "MpiMath": MpiMath,
+    "MpiClamp": MpiClamp,
     "MpiBoolean": MpiBoolean,
     "MpiSimpleBoolean": MpiSimpleBoolean,
     "MpiBooleanCompare": MpiBooleanCompare,
@@ -221,6 +222,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiCompare": "Mpi Compare",
     "MpiConvert": "Mpi Convert",
     "MpiMath": "Mpi Math",
+    "MpiClamp": "Mpi Clamp",
     "MpiBoolean": "Mpi Boolean",
     "MpiSimpleBoolean": "Mpi Simple Bool",
     "MpiBooleanCompare": "Mpi Boolean Compare",
