@@ -78,6 +78,7 @@ Route any type of input to a selected output by index.
 | Node | Description |
 |---|---|
 | **MpiAnySwitch** | Select one of up to 5 inputs of any type based on selection index. |
+| **MpiAnySwitch10** | Select one of up to 10 inputs of any type based on selection index. |
 | **MpiLoraSwitch** | Select one of up to 5 LoRA files by index. |
 | **MpiAnyInvSwitch** | Route an input of any type to one of up to 5 outputs (inverted switch). |
 | **MpiStringInvSwitch** | Route a string input to one of up to 5 outputs. |

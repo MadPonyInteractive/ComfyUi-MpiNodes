@@ -5,6 +5,7 @@ from .help_funcs import comfy_paths, AlwaysEqualProxy
 class MpiSwitch:
     _type: str = ""
     _type_name: str = ""
+    _count: int = 5
 
     @classmethod
     def INPUT_TYPES(cls):
@@ -15,22 +16,17 @@ class MpiSwitch:
                     {
                         "default": 1,
                         "min": 1,
-                        "max": 5,
-                        "tooltip": "Selection from 1 to 5 \nOutput index is also 1 to 5",
+                        "max": cls._count,
+                        "tooltip": f"Selection from 1 to {cls._count} \nOutput index is also 1 to {cls._count}",
                     },
                 ),
             },
             "optional": {
-                cls._type_name
-                + "_1": (cls._type, {"forceInput": True, "lazy": True}),
-                cls._type_name
-                + "_2": (cls._type, {"forceInput": True, "lazy": True}),
-                cls._type_name
-                + "_3": (cls._type, {"forceInput": True, "lazy": True}),
-                cls._type_name
-                + "_4": (cls._type, {"forceInput": True, "lazy": True}),
-                cls._type_name
-                + "_5": (cls._type, {"forceInput": True, "lazy": True}),
+                f"{cls._type_name}_{i}": (
+                    cls._type,
+                    {"forceInput": True, "lazy": True},
+                )
+                for i in range(1, cls._count + 1)
             },
         }
 
@@ -91,6 +87,11 @@ class MpiAnySwitch(MpiSwitch):
     DESCRIPTION = "Select one of up to 5 inputs of any type"
     RETURN_TYPES = (_type, "INT")
     RETURN_NAMES = (_type_name, "index")
+
+
+class MpiAnySwitch10(MpiAnySwitch):
+    _count = 10
+    DESCRIPTION = "Select one of up to 10 inputs of any type"
 
 
 class MpiInvertedSwitch:

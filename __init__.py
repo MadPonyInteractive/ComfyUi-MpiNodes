@@ -70,6 +70,7 @@ from .switches import (
     MpiAnyInvSwitch,
     MpiLoraSwitch,
     MpiAnySwitch,
+    MpiAnySwitch10,
 )
 from .loras import (
     MpiDoubleLora,
@@ -151,6 +152,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiAnyInvSwitch": MpiAnyInvSwitch,
     "MpiLoraSwitch": MpiLoraSwitch,
     "MpiAnySwitch": MpiAnySwitch,
+    "MpiAnySwitch10": MpiAnySwitch10,
     "MpiDoubleLora": MpiDoubleLora,
     "MpiLoraModel": MpiLoraModel,
     "MpiLoraModelClip": MpiLoraModelClip,
@@ -247,6 +249,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiPromptBridge": "Mpi Prompt Bridge",
     "MpiLoraSwitch": "Mpi Lora Switch",
     "MpiAnySwitch": "Mpi Any Switch",
+    "MpiAnySwitch10": "Mpi Any Switch 10",
     "MpiStringInvSwitch": "Mpi String Inverted Switch",
     "MpiAnyInvSwitch": "Mpi Any Inverted Switch",
     "MpiDoubleLora": "Mpi Double Lora Loader",

@@ -80,3 +80,4 @@
 - MpiStyleLoras - added (bank of 5 LoRA slots for MpiStyleSelector, chainable - each bank claims the next 5 selector values; outputs model, clip and prompt)
 - MpiClamp - added (clamps an int or float between a min and a max, preserves int inputs)
 - MpiTextContains - added (true if any listed word or phrase appears in the input text as a whole word - multiline box separated by commas or new lines, case-insensitive, plural-aware and spacing-agnostic; whitelist/blacklist check)
+- MpiAnySwitch10 - added (same as MpiAnySwitch with 10 inputs instead of 5)
