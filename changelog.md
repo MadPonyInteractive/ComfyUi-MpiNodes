@@ -82,3 +82,8 @@
 - MpiTextContains - added (true if any listed word or phrase appears in the input text as a whole word - multiline box separated by commas or new lines, case-insensitive, plural-aware and spacing-agnostic; whitelist/blacklist check)
 - MpiAnySwitch10 - added (same as MpiAnySwitch with 10 inputs instead of 5)
 - MpiCompare - added b_value float widget used when the b input is not connected, converted to the type of a (0/1 for booleans, truncated for ints); raises if a is not a number, connect b for that; b is now optional
+- MpiPacker - added (MPI_PACK type: bundles up to 5 values of any type into one wire, packs can nest)
+- MpiUnpacker - added (unpacks an MPI_PACK into 5 outputs in slot order, empty slots block downstream)
+- MpiPacker10 - added (same as MpiPacker with 10 slots)
+- MpiUnpacker10 - added (same as MpiUnpacker with 10 outputs)
+- MpiComparePacks - added (compares two packs slot by slot, tensor-safe and recursive; outputs equal + first_diff)

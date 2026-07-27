@@ -84,6 +84,30 @@ def is_empty_value(value):
     return False
 
 
+def values_equal(a, b):
+    """Equality that survives tensors nested anywhere inside the value.
+
+    Plain `a == b` blows up on an IMAGE/LATENT ("Boolean value of Tensor with
+    more than one element is ambiguous") and on any list or dict holding one,
+    so recurse into containers and use torch.equal on the tensors themselves.
+    """
+    if torch.is_tensor(a) or torch.is_tensor(b):
+        if not (torch.is_tensor(a) and torch.is_tensor(b)):
+            return False
+        # device guard: torch.equal raises across cpu/cuda instead of returning False
+        return a.shape == b.shape and a.device == b.device and torch.equal(a, b)
+    if isinstance(a, dict) and isinstance(b, dict):
+        return a.keys() == b.keys() and all(values_equal(a[k], b[k]) for k in a)
+    if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
+        return len(a) == len(b) and all(values_equal(x, y) for x, y in zip(a, b))
+    try:
+        return bool(a == b)
+    except Exception:
+        # ponytail: exotic objects (LazyAudioMap, model wrappers) that neither
+        # compare nor convert to bool — identity is the only honest answer.
+        return a is b
+
+
 def round_to_multiple(value, multiple_of, round):
     if multiple_of <= 0:
         return (value,)  # avoid division by zero

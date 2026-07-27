@@ -81,6 +81,11 @@ Route any type of input to a selected output by index.
 | **MpiAnySwitch10** | Select one of up to 10 inputs of any type based on selection index. |
 | **MpiLoraSwitch** | Select one of up to 5 LoRA files by index. |
 | **MpiAnyInvSwitch** | Route an input of any type to one of up to 5 outputs (inverted switch). |
+| **MpiPacker** | Bundle up to 5 values of *any* type (image + float + int + boolean + …) into one `MPI_PACK` wire. Unconnected slots stay empty. A pack is just a list, so a pack can go into another packer's slot — 5 packers into a packer carries 25 values on one wire. |
+| **MpiUnpacker** | Unpack an `MPI_PACK` back into 5 outputs, in the same slot order they were packed. Slots that were empty block execution downstream, so nothing runs on a missing value. |
+| **MpiPacker10** | Same as MpiPacker with 10 slots instead of 5. |
+| **MpiUnpacker10** | Same as MpiUnpacker with 10 outputs instead of 5. Feeding a 10-slot pack into the 5-slot MpiUnpacker drops the tail and logs a warning. |
+| **MpiComparePacks** | Compare two packs slot by slot. Outputs `equal` (true only if every slot matches) and `first_diff`, the 1-based slot of the first mismatch (0 when equal). Images and other tensors compare by content, and nested packs compare all the way down — this is the pack-safe alternative to MpiCompare, which raises on tensors. |
 | **MpiStringInvSwitch** | Route a string input to one of up to 5 outputs. |
 
 ---
