@@ -73,13 +73,29 @@ class MpiRoundToMultipleRes:
         )
 
 
+def _coerce(value: float, like):
+    """Convert the b_value float widget to the same type as `like`.
+
+    bool -> 0 is False, anything else True. int -> truncated. float -> as is.
+    Anything else raises: the widget can only express a number, so comparing
+    against a string, dict, list or tensor has to go through the b input.
+    """
+    if isinstance(like, bool):
+        return value != 0
+    if isinstance(like, (int, float)):
+        return type(like)(value)
+    raise TypeError(
+        f"MpiCompare: b_value is a number, so it cannot be compared against a "
+        f"{type(like).__name__}. Connect the b input instead."
+    )
+
+
 class MpiCompare:
     @classmethod
     def INPUT_TYPES(cls):
         return {
             "required": {
                 "a": ("*", {"forceInput": True}),
-                "b": ("*", {"forceInput": True}),
                 "operator": (
                     ["==", "!=", ">", "<", ">=", "<="],
                     {
@@ -87,20 +103,36 @@ class MpiCompare:
                         "tooltip": "Choose the comparison operator",
                     },
                 ),
-            }
+            },
+            "optional": {
+                "b": ("*", {"forceInput": True}),
+                "b_value": (
+                    "FLOAT",
+                    {
+                        "default": 0.0,
+                        "min": -1e9,
+                        "max": 1e9,
+                        "step": 0.01,
+                        "tooltip": "Compared against when b is not connected.\nConverted to the type of a: for a boolean 0 is false and anything else true, for an int it is truncated.\nTo compare against text, connect the b input instead.",
+                    },
+                ),
+            },
         }
 
     RETURN_TYPES = ("BOOLEAN",)
     RETURN_NAMES = ("result",)
     CATEGORY = "MpiNodes/Logic"
     FUNCTION = "compare"
-    DESCRIPTION = "General logic operator for comparing values"
+    DESCRIPTION = "General logic operator for comparing values. Compares a against the b input, or against the b_value widget when b is not connected"
 
     @classmethod
     def VALIDATE_INPUTS(cls, input_types):
         return True
 
-    def compare(self, a, b, operator):
+    def compare(self, a, operator, b=None, b_value=0.0):
+        if b is None:
+            b = _coerce(b_value, a)
+
         if operator == "==":
             result = a == b
         elif operator == "!=":
