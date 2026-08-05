@@ -38,6 +38,7 @@ Primitive operations for comparisons, type conversions, rounding, and boolean lo
 |---|---|
 | **MpiCompare** | General logic operator comparing two values with `==`, `!=`, `>`, `<`, `>=`, `<=`. `b` can be wired or typed into the `b_value` widget. |
 | **MpiBooleanCompare** | Compare two booleans with modes: equal, not_equal, both_false, both_true, one_is_true, not_both_true, etc. |
+| **MpiBooleanInvert** | Invert a boolean — true in, false out. A pass-through NOT gate. |
 | **MpiConvert** | Convert any value to STRING, INT, FLOAT, and BOOLEAN outputs simultaneously. |
 | **MpiRoundToMultiple** | Round a single integer to the nearest multiple (up or down). |
 | **MpiRoundToMultipleRes** | Round width and height to the nearest multiple simultaneously. |

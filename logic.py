@@ -315,6 +315,18 @@ class MpiBoolean(MpiBool):
         return (boolean, int(boolean), float(boolean))
 
 
+class MpiBooleanInvert(MpiBool):
+    DESCRIPTION = "Invert a boolean: true in, false out. Pass-through NOT gate."
+    RETURN_TYPES = ("BOOLEAN",)
+    RETURN_NAMES = ("inverted",)
+
+    def doit(
+        self,
+        boolean,
+    ):
+        return (not boolean,)
+
+
 class MpiBooleanCompare:
     @classmethod
     def INPUT_TYPES(cls):
