@@ -101,6 +101,7 @@ from .multi_text import (
 from .wan import MpiWanFrames, MpiWanSeconds
 from .vram import MpiClearVram
 from .video import MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
+from .latent import MpiSaveLatent, MpiLoadLatent
 
 # TEST NODES
 # from .dynamic_combo import MpiDynamicCombo
@@ -207,6 +208,8 @@ NODE_CLASS_MAPPINGS = {
     "MpiSaveVideo": MpiSaveVideo,
     "MpiLoadVideo": MpiLoadVideo,
     "MpiLoadAudio": MpiLoadAudio,
+    "MpiSaveLatent": MpiSaveLatent,
+    "MpiLoadLatent": MpiLoadLatent,
     # TESTS
     # "MpiDummyToggleNode": MpiDummyToggleNode,
     # "MpiDynamicCombo": MpiDynamicCombo,
@@ -311,6 +314,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiSaveVideo": "Mpi Save Video",
     "MpiLoadVideo": "Mpi Load Video",
     "MpiLoadAudio": "Mpi Load Audio",
+    "MpiSaveLatent": "Mpi Save Latent",
+    "MpiLoadLatent": "Mpi Load Latent",
 }
 
 WEB_DIRECTORY = "./web"

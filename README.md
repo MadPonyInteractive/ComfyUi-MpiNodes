@@ -190,6 +190,13 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | **MpiLoadVideo** | Fast, no-frills video loader by path. Decodes frames + audio and outputs source info (fps, frame_count, duration, width, height, has_audio) in one ffmpeg pass — no in-graph preview, no VHS param surface, so it loads much faster than Load Video (Path). Input named `string` to match MpiString / MpiAnyChecker; empty/missing path blocks downstream, unless block_if_empty is off (then outputs a blank 1x1 image + silent audio). |
 | **MpiLoadAudio** | Load audio from a file path into a ComfyUI AUDIO object, like the built-in Load Audio but driven by a `string` path (matches MpiString / MpiAnyChecker). Works on anything ffmpeg reads, including the audio track of a video. Empty/missing/audio-less path blocks downstream, unless block_if_empty is off (then outputs silent audio). |
 
+### Latent
+
+| Node | Description |
+|---|---|
+| **MpiSaveLatent** | Save a latent to `<output>/latents/<filename>.latent` (or an absolute path), overwriting, then either stop the branch there or carry on — the `boolean` widget is the same continue/block gate as MpiBlocker. Unlike the core Save Latent node it handles packed audio+video latents (MiniMax H3's NestedTensor pair, which has no `.contiguous()` and crashes core). Single-tensor files stay byte-compatible with core Load Latent. The BOOLEAN output is never blocked, so it can drive a second branch. |
+| **MpiLoadLatent** | Load a latent written by MpiSaveLatent and continue the run — the second half of a two-stage sample. Rebuilds a packed audio+video pair (H3) or a plain tensor. Filename is a plain text field, not a dropdown, so a file written this session needs no UI refresh. A missing file blocks the latent output and reports `loaded` false, so the other branch can generate it instead. |
+
 ---
 
 ## License

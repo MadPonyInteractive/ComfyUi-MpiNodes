@@ -87,3 +87,5 @@
 - MpiPacker10 - added (same as MpiPacker with 10 slots)
 - MpiUnpacker10 - added (same as MpiUnpacker with 10 outputs)
 - MpiComparePacks - added (compares two packs slot by slot, tensor-safe and recursive; outputs equal + first_diff)
+- MpiSaveLatent - added (saves a latent then optionally blocks the branch; handles the packed audio+video NestedTensor pair that crashes core SaveLatent)
+- MpiLoadLatent - added (loads a latent back and continues a two-stage sample; rebuilds the audio+video pair, blocks + reports false when the file is missing)
