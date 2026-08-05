@@ -316,6 +316,16 @@ class MpiBoolean(MpiBool):
 
 
 class MpiBooleanInvert(MpiBool):
+    @classmethod
+    def INPUT_TYPES(cls):
+        # No widget: a NOT gate has nothing to set by hand, so the input is
+        # wire-only. Same forceInput shape MpiBooleanCompare uses.
+        return {
+            "required": {
+                "boolean": ("BOOLEAN", {"forceInput": True}),
+            },
+        }
+
     DESCRIPTION = "Invert a boolean: true in, false out. Pass-through NOT gate."
     RETURN_TYPES = ("BOOLEAN",)
     RETURN_NAMES = ("inverted",)
