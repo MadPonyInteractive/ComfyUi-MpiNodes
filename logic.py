@@ -505,7 +505,7 @@ class MpiBlocker:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "input": (AlwaysEqualProxy("*"), {}),
+                "input": (AlwaysEqualProxy("*"), {"lazy": True}),
                 "boolean": (
                     "BOOLEAN",
                     {
@@ -520,12 +520,19 @@ class MpiBlocker:
     RETURN_TYPES = (AlwaysEqualProxy("*"),)
     RETURN_NAMES = ("output",)
     CATEGORY = "MpiNodes/Logic"
-    DESCRIPTION = "Manual gate: pass input through when the switch is on (continue), block downstream execution when off (block). A one-output if/else."
+    DESCRIPTION = "Manual gate: pass input through when the switch is on (continue), block the branch when off (block). Blocking skips the work FEEDING this node too - the input is lazy, so when the gate is off nothing upstream of it runs either. A one-output if/else."
     FUNCTION = "doit"
 
     @classmethod
     def VALIDATE_INPUTS(cls, input_types):
         return True
+
+    def check_lazy_status(self, boolean: bool, input=None):
+        # The gate decides from `boolean` alone, so when it is off the input is
+        # never needed — don't ask for it, and everything upstream is skipped.
+        # ExecutionBlocker only travels downstream; laziness is the only thing
+        # that stops the work feeding a blocked branch from running anyway.
+        return ["input"] if boolean else []
 
     def doit(self, input, boolean: bool):
         if boolean:

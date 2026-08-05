@@ -90,3 +90,4 @@
 - MpiSaveLatent - added (saves a latent then optionally blocks the branch; handles the packed audio+video NestedTensor pair that crashes core SaveLatent)
 - MpiLoadLatent - added (loads a latent back and continues a two-stage sample; rebuilds the audio+video pair, blocks + reports false when the file is missing)
 - MpiBooleanInvert - added (inverts a boolean; wire-only input, no widget)
+- MpiBlocker - input is now lazy: blocking skips the upstream work feeding it, not just the downstream branch

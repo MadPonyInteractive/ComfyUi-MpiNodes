@@ -53,7 +53,7 @@ Primitive operations for comparisons, type conversions, rounding, and boolean lo
 | **MpiReroute** | Pass any value through unchanged. Rename the node title for a labelled reroute. |
 | **MpiConditioningReroute** | Pass `positive` and `negative` conditioning through unchanged — a labelled conditioning reroute. |
 | **MpiAnyBlocker** | Pass any value through, but block downstream execution if it is empty (empty string/list/dict/None/zero-element tensor/empty audio). 0, 0.0 and False pass through. |
-| **MpiBlocker** | Manual gate with a toggle: pass input through when set to `continue`, block downstream execution when set to `block`. A one-output if/else. |
+| **MpiBlocker** | Manual gate: pass the input through when the switch is on (continue), block the branch when off (block). The input is **lazy**, so blocking also skips everything feeding this node — not just what comes after it. |
 | **MpiAnyChecker** | Pass any value through unchanged and output a `has_value` boolean — true if non-empty, false if empty. Same emptiness rules as MpiAnyBlocker. |
 | **MpiSeedPassthrough** | Pass any value through and emit a `seed`. Forces the workflow to re-run every time (via `IS_CHANGED`) so seed-less workflows don't get stuck on cached outputs. Leave `any` unconnected to use as a pure seed source. |
 | **MpiLogger** | End-of-chain logger with no output — prints when its input arrives. `mode="value"` logs the input value with a prefix; `mode="message"` logs only the message text, marking that the point was reached without dumping the input. |
