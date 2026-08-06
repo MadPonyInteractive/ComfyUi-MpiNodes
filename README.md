@@ -182,6 +182,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 |---|---|
 | **MpiClearVram** | Offload all models from VRAM to RAM, clear GPU cache, and run garbage collection. Passes through a value to chain in workflows. |
 | **MpiHasAudio** | Check if a video file (by path) contains an audio stream via ffmpeg. Outputs a boolean to gate an audio wire into CreateVideo. |
+| **MpiH3Length** | Convert a wanted duration into a valid MiniMax H3 frame count. H3 only generates `n % 17 == 5` frames at 24 fps, so whole seconds are mostly unreachable — asking for 2 s gives 2.33 s, and 8 s is the shortest exact one. Snaps to the **nearest** valid count (core snaps up, which is never closer), and outputs the true `seconds` plus `in_trained_range` (false outside 124–362 frames, where the model runs but was not trained). |
 
 ### Video
 
@@ -195,7 +196,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 
 | Node | Description |
 |---|---|
-| **MpiSaveLatent** | Save a latent to `<output>/latents/<filename>.latent` (or an absolute path), overwriting, then either stop the branch there or carry on — the `boolean` widget is the same continue/block gate as MpiBlocker. Unlike the core Save Latent node it handles packed audio+video latents (MiniMax H3's NestedTensor pair, which has no `.contiguous()` and crashes core). Single-tensor files stay byte-compatible with core Load Latent. The BOOLEAN output is never blocked, so it can drive a second branch. |
+| **MpiSaveLatent** | Save a latent to `<output>/latents/<filename>.latent` (or an absolute path), overwriting, then either stop the branch there or carry on — the `boolean` widget is the same continue/block gate as MpiBlocker. Unlike the core Save Latent node it handles packed audio+video latents (MiniMax H3's NestedTensor pair, which has no `.contiguous()` and crashes core). Single-tensor files stay byte-compatible with core Load Latent. The BOOLEAN output is never blocked, so it can drive a second branch. **This is an output node, so ComfyUI runs it on every submit** — set `enabled` false on runs that must not save (a stage-2 continue), or it drags the sampler feeding it along too. |
 | **MpiLoadLatent** | Load a latent written by MpiSaveLatent and continue the run — the second half of a two-stage sample. Rebuilds a packed audio+video pair (H3) or a plain tensor. Filename is a plain text field, not a dropdown, so a file written this session needs no UI refresh. A missing file blocks the latent output and reports `loaded` false, so the other branch can generate it instead. |
 
 ---

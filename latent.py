@@ -32,7 +32,7 @@ class MpiSaveLatent:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "samples": ("LATENT",),
+                "samples": ("LATENT", {"lazy": True}),
                 "filename": (
                     "STRING",
                     {
@@ -49,16 +49,34 @@ class MpiSaveLatent:
                     },
                 ),
             },
+            "optional": {
+                "enabled": (
+                    "BOOLEAN",
+                    {
+                        "default": True,
+                        "label_on": "enabled",
+                        "label_off": "skipped",
+                    },
+                ),
+            },
         }
 
     RETURN_TYPES = ("LATENT", "BOOLEAN")
     RETURN_NAMES = ("samples", "continue")
     OUTPUT_NODE = True
     CATEGORY = "MpiNodes/Latent"
-    DESCRIPTION = "Save a latent to disk, then optionally stop the branch there (block) or carry on (continue). Handles packed audio+video latents (MiniMax H3) that crash the core Save Latent node. The boolean output is not blocked, so it can still drive another branch."
+    DESCRIPTION = "Save a latent to disk, then optionally stop the branch there (block) or carry on (continue). Handles packed audio+video latents (MiniMax H3) that crash the core Save Latent node. The boolean output is not blocked, so it can still drive another branch. Turn `enabled` off on runs that must not save (e.g. a stage-2 continue): this is an output node, so ComfyUI runs it on EVERY submit and would otherwise drag the whole sampler feeding it along with it. `enabled` off skips that work entirely."
     FUNCTION = "doit"
 
-    def doit(self, samples, filename: str, boolean: bool):
+    def check_lazy_status(self, filename: str, boolean: bool, samples=None, enabled=True):
+        # `samples` is only needed when we are actually going to save. Without
+        # this, OUTPUT_NODE guarantees execution and the sampler upstream runs
+        # on every submit — ExecutionBlocker downstream cannot prevent that.
+        return ["samples"] if enabled else []
+
+    def doit(self, filename: str, boolean: bool, samples=None, enabled=True):
+        if not enabled:
+            return (ExecutionBlocker(None), False)
         path = _latent_path(filename)
         if path is None:
             raise ValueError("Mpi Save Latent: filename is empty")

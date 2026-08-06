@@ -91,3 +91,5 @@
 - MpiLoadLatent - added (loads a latent back and continues a two-stage sample; rebuilds the audio+video pair, blocks + reports false when the file is missing)
 - MpiBooleanInvert - added (inverts a boolean; wire-only input, no widget)
 - MpiBlocker - input is now lazy: blocking skips the upstream work feeding it, not just the downstream branch
+- MpiSaveLatent - added enabled input (lazy samples): off skips the save AND the work feeding it, so an output node no longer forces its upstream sampler to run
+- MpiH3Length - added (wanted duration -> valid MiniMax H3 frame count on the 17k+5 grid, nearest not up; outputs true seconds and in_trained_range)
