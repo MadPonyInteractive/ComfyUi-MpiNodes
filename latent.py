@@ -7,12 +7,22 @@ import folder_paths  # type: ignore
 from comfy_execution.graph import ExecutionBlocker  # type: ignore
 
 
-def _latent_path(filename: str):
+LATENT_SUBFOLDER = "latents"
+
+
+def _latent_path(filename: str, search_input: bool = False):
     """Resolve a latent filename to an absolute .latent path.
 
     Absolute paths pass through; a bare name resolves against
     `<output>/latents/` — same convention as MpiHasAudio's video_path.
     Returns None for an empty name.
+
+    `search_input=True` (load only) checks the engine `input/` dir FIRST and
+    uses it when the file is there. That is where a host app stages a latent it
+    downloaded from a previous run — ComfyUI's own LoadLatent reads `input/`
+    only, so a two-stage flow driven from outside ComfyUI puts the file there.
+    Falling back to `<output>/latents/` keeps a hand-run bench graph working
+    unchanged: nothing stages into `input/`, so it resolves exactly as before.
     """
     name = filename.strip()
     if not name:
@@ -22,8 +32,13 @@ def _latent_path(filename: str):
     if os.path.isabs(name):
         return name
     # basename() so a typed "../../foo" cannot escape the latents folder
+    base = os.path.basename(name)
+    if search_input:
+        staged = os.path.join(folder_paths.get_input_directory(), base)
+        if os.path.isfile(staged):
+            return staged
     return os.path.join(
-        folder_paths.get_output_directory(), "latents", os.path.basename(name)
+        folder_paths.get_output_directory(), LATENT_SUBFOLDER, base
     )
 
 
@@ -96,9 +111,23 @@ class MpiSaveLatent:
 
         comfy.utils.save_torch_file(out, path)
 
-        if boolean:
-            return (samples, True)
-        return (ExecutionBlocker(None), False)
+        # Report the saved file the way core SaveLatent does. A host app driving
+        # a two-stage run reads this from /history to learn what was written —
+        # without it the save is invisible outside ComfyUI and the app cannot
+        # fetch the latent to continue from. `subfolder` matches where we wrote.
+        ui = {
+            "latents": [
+                {
+                    "filename": os.path.basename(path),
+                    "subfolder": ""
+                    if os.path.isabs(filename.strip())
+                    else LATENT_SUBFOLDER,
+                    "type": "output",
+                }
+            ]
+        }
+        result = (samples, True) if boolean else (ExecutionBlocker(None), False)
+        return {"ui": ui, "result": result}
 
 
 class MpiLoadLatent:
@@ -110,7 +139,7 @@ class MpiLoadLatent:
                     "STRING",
                     {
                         "default": "mpi_stage1",
-                        "tooltip": "Read from <output>/latents/<filename>.latent, or an absolute path. A plain text field, not a dropdown, so a file written this session needs no UI refresh.",
+                        "tooltip": "Read from the engine <input>/ folder if the file is there, else <output>/latents/<filename>.latent. An absolute path is used as-is. A plain text field, not a dropdown, so a file written this session needs no UI refresh.",
                     },
                 ),
             },
@@ -119,11 +148,11 @@ class MpiLoadLatent:
     RETURN_TYPES = ("LATENT", "BOOLEAN")
     RETURN_NAMES = ("samples", "loaded")
     CATEGORY = "MpiNodes/Latent"
-    DESCRIPTION = "Load a latent written by Mpi Save Latent and continue the run. Rebuilds packed audio+video latents (MiniMax H3). If the file is missing the latent output blocks downstream execution and loaded is false, so the other branch can generate it instead."
+    DESCRIPTION = "Load a latent written by Mpi Save Latent and continue the run. Rebuilds packed audio+video latents (MiniMax H3). Looks in the engine input/ folder first (where a host app stages a latent from a previous run), then <output>/latents/. If the file is missing the latent output blocks downstream execution and loaded is false, so the other branch can generate it instead."
     FUNCTION = "doit"
 
     def doit(self, filename: str):
-        path = _latent_path(filename)
+        path = _latent_path(filename, search_input=True)
         if path is None or not os.path.isfile(path):
             return (ExecutionBlocker(None), False)
 
@@ -145,7 +174,7 @@ class MpiLoadLatent:
 
     @classmethod
     def IS_CHANGED(cls, filename: str):
-        path = _latent_path(filename)
+        path = _latent_path(filename, search_input=True)
         if path is None or not os.path.isfile(path):
             return "missing"
         # ponytail: mtime+size, not a hash — an H3 latent is hundreds of MB and

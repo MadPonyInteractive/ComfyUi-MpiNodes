@@ -93,3 +93,5 @@
 - MpiBlocker - input is now lazy: blocking skips the upstream work feeding it, not just the downstream branch
 - MpiSaveLatent - added enabled input (lazy samples): off skips the save AND the work feeding it, so an output node no longer forces its upstream sampler to run
 - MpiH3Length - added (wanted duration -> valid MiniMax H3 frame count on the 17k+5 grid, nearest not up; outputs true seconds and in_trained_range)
+- MpiSaveLatent - now reports the saved file as `ui.latents` the way core SaveLatent does (filename + subfolder + type), so a host app driving a two-stage run can read it back from /history and fetch it over /view; the save was previously invisible outside ComfyUI
+- MpiLoadLatent - now looks in the engine `input/` folder first and falls back to `<output>/latents/`, so a latent staged there by a host app resolves; a hand-run graph is unaffected because nothing stages into `input/`
