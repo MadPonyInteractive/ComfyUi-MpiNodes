@@ -366,10 +366,10 @@ class MpiLatentUpscale:
                 "stride": (
                     "INT",
                     {
-                        "default": 32,
+                        "default": 16,
                         "min": 1,
                         "max": 64,
-                        "tooltip": "Pixels per latent cell, END TO END: the VAE's spatial compression TIMES the transformer's patch size. MiniMax H3 is 32 (VAE 16 x DiT patch 2), which is why its canvas rule is a multiple of 32; the SD/SDXL family is 8. Getting this wrong does not error - it silently asks for the wrong resolution, and 16 on H3 requests a 2x over-upscale that decodes as hard horizontal banding.",
+                        "tooltip": "Pixels per latent cell for THIS model's VAE. 16 for MiniMax H3 and Krea2; 8 for the SD/SDXL family. Core hardcodes 8, which is why its node doubles an H3 target.",
                     },
                 ),
             }
