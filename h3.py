@@ -13,6 +13,8 @@ Deliberately free of ComfyUI imports so the arithmetic stays testable in bare
 Python; `python h3.py` runs the self-check at the bottom.
 """
 
+import re
+
 FPS = 24.0
 _GRID = 17
 _OFFSET = 5
@@ -189,6 +191,45 @@ def ref_tag_map(image_slots, video_slots, audio_slots) -> str:
     return "\n".join(lines) if lines else "(no references - this is a plain t2va run)"
 
 
+_TAG_RE = re.compile(r"<(Picture|Video|Audio)\s+(\d+)>")
+
+
+def rewrite_prompt_tags(prompt, image_slots, video_slots, audio_slots) -> str:
+    """Translate SLOT-numbered tags into the ordinals core actually presents.
+
+    A host app numbers its reference wells: well 1, well 2, well 3. Core numbers
+    the SURVIVORS, and its audio sequence is shared -- a reference video's
+    soundtrack consumes an <Audio j> before its <Video k>, so a standalone clip
+    sitting behind a sounded video is <Audio 2> even though it is in audio well 1.
+    Worse, whether a video HAS a soundtrack is a property of the FILE, so the
+    number moves depending on a fact nobody knows until decode time. An app cannot
+    label its own wells correctly, and a user cannot either.
+
+    So the wells stay the contract. The user writes the tag their chip shows and
+    this rewrites it, here, where both numberings are known. A tag naming an empty
+    well is DROPPED rather than passed through -- core would present no such label,
+    and a dangling one is a reference the model is told to look for and cannot find.
+
+    Video soundtracks are deliberately not addressable: they have no well of their
+    own, and <Video k> already names the clip they came from.
+    """
+    mapping = {}
+    for ordinal, slot in enumerate(image_slots, 1):
+        mapping[("Picture", slot)] = ordinal
+    for ordinal, (slot, _has_audio) in enumerate(video_slots, 1):
+        mapping[("Video", slot)] = ordinal
+    # Standalone audio starts after every soundtrack that actually materialised.
+    consumed = sum(1 for _, has_audio in video_slots if has_audio)
+    for ordinal, slot in enumerate(audio_slots, 1):
+        mapping[("Audio", slot)] = consumed + ordinal
+
+    def _sub(match):
+        target = mapping.get((match.group(1), int(match.group(2))))
+        return "" if target is None else f"<{match.group(1)} {target}>"
+
+    return re.sub(r"[ \t]{2,}", " ", _TAG_RE.sub(_sub, prompt)).strip()
+
+
 class MpiH3References:
     @classmethod
     def INPUT_TYPES(cls):
@@ -205,7 +246,7 @@ class MpiH3References:
                 "clip": ("CLIP",),
                 "vae": ("VAE",),
                 "audio_vae": ("VAE",),
-                "prompt": ("STRING", {"multiline": True, "dynamicPrompts": True, "tooltip": "Address references by the tags in the ref_tags output: <Picture 1>, <Video 1>, <Audio 1>."}),
+                "prompt": ("STRING", {"multiline": True, "dynamicPrompts": True, "tooltip": "Address references by their SLOT number here: <Picture 1> is whatever is wired into ref_image_1, <Audio 2> into ref_audio_2. The node rewrites them to the ordinals core presents (see ref_tags) - so a tag keeps meaning the same input no matter which other slots are empty. A tag naming an empty slot is removed."}),
                 "width": ("INT", {"default": 1344, "min": 32, "max": MAX_RESOLUTION, "step": 32}),
                 "height": ("INT", {"default": 768, "min": 32, "max": MAX_RESOLUTION, "step": 32}),
                 "length": ("INT", {"default": 124, "min": 5, "max": 3600, "step": 17, "tooltip": "Frame count at 24 fps (124 = ~5 s, trained range ~124-362). Feed it from MpiH3Length."}),
@@ -230,8 +271,13 @@ class MpiH3References:
         "branch per combination. An empty slot means either nothing connected or an Mpi "
         "loader with block_if_empty OFF (a 1x1 image / 1-sample waveform) - real black "
         "images and real silence are not mistaken for empty. The conditioning is built "
-        "by core's own MiniMaxH3ReferenceToVideo. `ref_tags` reports which <Picture i> / "
-        "<Video k> / <Audio j> each surviving slot became; write the prompt against that."
+        "by core's own MiniMaxH3ReferenceToVideo. Write the prompt against the SLOT "
+        "numbers - <Picture 1> means ref_image_1 - and the node rewrites them to the "
+        "ordinals core presents, dropping any tag whose slot is empty. That is what keeps "
+        "a tag pointing at the same input when a slot ahead of it is left empty, and it "
+        "is the only way to be right about audio: a reference video's soundtrack consumes "
+        "an <Audio j>, and whether the file HAS one is unknown until it is decoded. "
+        "`ref_tags` reports the resulting map."
     )
     FUNCTION = "doit"
 
@@ -249,6 +295,9 @@ class MpiH3References:
         refs = collect_refs(kwargs)
         ref_images, ref_videos, ref_video_audios, ref_audios = refs["packed"]
         image_slots, video_slots, audio_slots = refs["slots"]
+        # The prompt arrives addressing SLOTS (what the host app's chips show) and
+        # leaves addressing core's ordinals. See rewrite_prompt_tags.
+        prompt = rewrite_prompt_tags(prompt, image_slots, video_slots, audio_slots)
 
         output = MiniMaxH3ReferenceToVideo.execute(
             clip=clip, vae=vae, audio_vae=audio_vae, prompt=prompt,
@@ -317,6 +366,32 @@ if __name__ == "__main__":
         "<Video 2> = ref_video_3",
         "<Audio 2> = ref_audio_2",
     ], tags
+
+    # Tag rewriting, on the SAME staging as above. The user writes what the chips
+    # show -- picture wells 2 and 5, video wells 2 and 3, audio well 2 -- and each
+    # lands on core's ordinal. Video well 3 carries a soundtrack, so it eats
+    # <Audio 1> and the standalone clip in audio well 2 becomes <Audio 2>. Getting
+    # this wrong points the model at the wrong reference, silently.
+    got = rewrite_prompt_tags(
+        "<Picture 2> meets <Picture 5> in <Video 2>, moving like <Video 3>, saying <Audio 2>",
+        image_slots, video_slots, audio_slots)
+    assert got == "<Picture 1> meets <Picture 2> in <Video 1>, moving like <Video 2>, saying <Audio 2>", got
+
+    # A tag for an EMPTY well is dropped, not passed through: core presents no such
+    # label, so leaving it tells the model to find a reference that is not there.
+    assert rewrite_prompt_tags("a shot of <Picture 1> at dusk", image_slots, video_slots, audio_slots) \
+        == "a shot of at dusk"
+
+    # No references at all: every tag is empty, so every tag goes.
+    assert rewrite_prompt_tags("<Audio 1> over <Video 1>", [], [], []) == "over"
+
+    # A prompt with no tags is returned untouched (bar the strip).
+    assert rewrite_prompt_tags("a woman walking", [2], [], []) == "a woman walking"
+
+    # With NO sounded video the standalone clip keeps its own well number -- this is
+    # the case that used to shift under the user depending on the video FILE.
+    assert rewrite_prompt_tags("<Audio 1>", [], [(1, False)], [1]) == "<Audio 1>"
+    assert rewrite_prompt_tags("<Audio 1>", [], [(1, True)], [1]) == "<Audio 2>"
 
     assert collect_refs({})["packed"] == ({}, {}, {}, {})
     assert snap_h3_frames(96) == 90 and snap_h3_frames(5) == 5
