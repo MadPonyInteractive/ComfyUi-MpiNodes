@@ -309,3 +309,101 @@ class MpiLoadLatent:
         # ponytail: mtime+size, not a hash — an H3 latent is hundreds of MB and
         # hashing it every graph validation would cost more than the load.
         return "{}:{}".format(os.path.getmtime(path), os.path.getsize(path))
+
+
+class MpiLatentUpscale:
+    """Latent upscale that survives a packed audio+video latent (MiniMax H3).
+
+    Core's Upscale Latent gets two things wrong here, and both are silent until
+    they are not:
+
+    1. It hands the latent straight to `comfy.utils.common_upscale`, which
+       `.reshape()`s it. A NestedTensor has no `reshape`, so an H3 latent dies with
+       `AttributeError: 'NestedTensor' object has no attribute 'reshape'` - the same
+       family of failure that made MpiSaveLatent necessary.
+    2. It converts pixels to latent cells with a hardcoded `// 8`, the SD VAE
+       factor. H3's video latent is `/16`, so a target typed in pixels comes out at
+       DOUBLE the size with no error at all: type 1344x768 and get 2688x1536.
+
+    So this one takes the target in PIXELS and divides by `stride`, and it upscales
+    only the half of the pair that has spatial dims. The audio half is
+    `[B, 32, 2, T]` - time, no height or width - so it rides through untouched and
+    the pair stays aligned for the second sampler.
+
+    The point of it is the hi-res fix: sample stage 1 on a small canvas, upscale the
+    latent here, and let stage 2's low sigmas finish at the big one, so only the
+    second half of the denoise pays for the resolution.
+    """
+
+    upscale_methods = ["nearest-exact", "bilinear", "area", "bicubic", "bislerp"]
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "samples": ("LATENT",),
+                "upscale_method": (cls.upscale_methods, {"default": "nearest-exact"}),
+                "width": (
+                    "INT",
+                    {
+                        "default": 1344,
+                        "min": 16,
+                        "max": 16384,
+                        "step": 16,
+                        "tooltip": "Target width in PIXELS, not latent cells. Unlike core's node this is the number you actually want.",
+                    },
+                ),
+                "height": (
+                    "INT",
+                    {
+                        "default": 768,
+                        "min": 16,
+                        "max": 16384,
+                        "step": 16,
+                        "tooltip": "Target height in PIXELS.",
+                    },
+                ),
+                "stride": (
+                    "INT",
+                    {
+                        "default": 16,
+                        "min": 1,
+                        "max": 64,
+                        "tooltip": "Pixels per latent cell for THIS model's VAE. 16 for MiniMax H3 and Krea2; 8 for the SD/SDXL family. Core hardcodes 8, which is why its node doubles an H3 target.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    CATEGORY = "MpiNodes/Latent"
+    DESCRIPTION = "Upscale a latent to a target given in PIXELS, dividing by the model's own VAE stride instead of core's hardcoded 8. Handles the packed audio+video latents (MiniMax H3) that crash core's Upscale Latent, scaling only the video half and passing the audio half through. For a hi-res fix: small stage 1, upscale here, finish stage 2 at the target."
+    FUNCTION = "doit"
+
+    def doit(self, samples, upscale_method: str, width: int, height: int, stride: int):
+        lw = max(1, width // stride)
+        lh = max(1, height // stride)
+
+        t = samples["samples"]
+        if getattr(t, "is_nested", False):
+            # Imported here for the same reason _load_latent_file does it: the
+            # module only exists from ComfyUI 0.30.0 and a module-level import
+            # would stop the whole pack loading on an older engine.
+            from comfy.nested_tensor import NestedTensor  # type: ignore
+
+            parts = list(t.unbind())
+            # Pick the video half by SHAPE, not by index. The pair is video-then-audio
+            # today, but indexing on that would break silently if it ever flipped,
+            # and "has spatial dims" is the actual property being relied on.
+            for i, part in enumerate(parts):
+                if part.dim() >= 5:
+                    parts[i] = comfy.utils.common_upscale(
+                        part, lw, lh, upscale_method, "disabled"
+                    )
+            out = NestedTensor(parts)
+        else:
+            out = comfy.utils.common_upscale(t, lw, lh, upscale_method, "disabled")
+
+        s = samples.copy()
+        s["samples"] = out
+        return (s,)
