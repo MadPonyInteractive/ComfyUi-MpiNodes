@@ -26,6 +26,7 @@ Nothing here is H3-specific — any video model with a TAEHV-shaped tiny decoder
 works — but H3 is what it was built and tested for.
 """
 
+import math
 import struct
 import time
 from io import BytesIO
@@ -37,6 +38,10 @@ from PIL import Image
 
 import comfy.model_management as mm  # type: ignore
 import comfy.patcher_extension  # type: ignore
+import comfy.sd  # type: ignore
+import comfy.taesd.taehv as taehv  # type: ignore
+import comfy.utils  # type: ignore
+import folder_paths  # type: ignore
 import server  # type: ignore
 
 _PREVIEW_MAX = 512
@@ -68,20 +73,32 @@ class _TinyVaePreviewer:
     video's own speed instead of jumping a frame per step.
     """
 
-    def __init__(self, vae, rate: float, ratio: int):
+    def __init__(self, vae, rate: float, ratio: int, latent_shapes=None):
         self.vae = vae
         self.rate = max(1.0, float(rate))
         self.ratio = ratio
+        self.latent_shapes = latent_shapes
         self.first = True
         self.last_time = 0.0
         self.cursor = 0
 
     def push(self, x0):
         srv = server.PromptServer.instance
-        # H3 packs video+audio as a nested pair; the video half is tensors[0].
-        # Core's own previewer does exactly this before decoding.
+        # H3 packs video+audio as a nested pair; the video half comes first.
+        #
+        # WHICH VIEW ARRIVES HERE IS NOT A CHOICE. A multi-part latent reaches the
+        # sampler as ONE flat pack, and core restores the nested view in a callback
+        # wrapper it builds BEFORE calling outer_sample — so our OUTER_SAMPLE wrapper
+        # installs its callback INSIDE that unpacker and sees the flat pack, while
+        # core's own previewer, further out, sees the nested one. Measured on H3:
+        # x0 arrives as (1, 1, 658752) with is_nested False, against latent_shapes
+        # [[1,24,17,40,40], [1,32,2,93]] — video + audio, and those two do sum to
+        # 658752. Unpack it ourselves; `latent_shapes` is handed to the wrapper for
+        # exactly this. Handle the nested view too, in case a path delivers it.
         if getattr(x0, "is_nested", False):
             x0 = x0.tensors[0]
+        elif self.latent_shapes and len(self.latent_shapes) > 1:
+            x0 = comfy.utils.unpack_latents(x0, self.latent_shapes)[0]
         if x0.ndim == 5:
             # [B,C,T,H,W] -> frames as batch, so a slice of frames decodes as a batch.
             x0 = x0.movedim(2, 1).reshape((-1,) + tuple(x0.shape[-3:]))
@@ -165,7 +182,8 @@ class _PreviewWrapper:
     def __call__(self, executor, noise, latent_image, sampler, sigmas, denoise_mask,
                  callback, disable_pbar, seed, latent_shapes=None):
         previewer = _TinyVaePreviewer(
-            self.vae, self.rate, _temporal_ratio(executor.class_obj.model_patcher)
+            self.vae, self.rate, _temporal_ratio(executor.class_obj.model_patcher),
+            latent_shapes,
         )
         # Pin the tiny VAE to the sampling device: it is ~22MB and reloading it
         # per step costs more than the decode.
@@ -203,9 +221,9 @@ class MpiVideoSamplingPreview:
                 "model": ("MODEL",),
                 "vae": ("VAE", {
                     "tooltip": "A TINY TAEHV decoder, not the model's real VAE — taeh3 for "
-                               "MiniMax H3. Load it with a plain VAELoader; ComfyUI detects "
-                               "TAEHV from the state dict. Handing over the full VAE here "
-                               "decodes at full cost every step and will crawl.",
+                               "MiniMax H3. Load it with MpiTinyVaeLoader: a plain VAELoader "
+                               "CANNOT build taeh3 (see that node). Handing over the full VAE "
+                               "here decodes at full cost every step and will crawl.",
                 }),
                 "preview_rate": ("FLOAT", {
                     "default": 8.0, "min": 1.0, "max": 60.0, "step": 0.5,
@@ -237,3 +255,96 @@ class MpiVideoSamplingPreview:
             _PreviewWrapper(vae, preview_rate),
         )
         return (patched,)
+
+
+# ── Loading a tiny decoder core cannot build ────────────────────────────────
+#
+# `TAEHV.__init__` sizes its edge convs as `image_channels * patch_size**2` and
+# picks `patch_size = 2` for `latent_channels in [48, 32]` only. taeh3 is a
+# 24-channel latent with a 12-wide decoder (3 RGB x 4 temporal frames), so core
+# builds it patch_size 1 / 3 wide and `VAELoader` dies inside `comfy.sd.VAE`:
+#
+#     size mismatch for decoder.22.bias: checkpoint [12] vs model [3]
+#
+# There is no branch in `comfy/sd.py` for that shape and no argument that
+# reaches it — patch_size is derived from latent_channels alone. Verified the
+# same on engine 0.30.0 and bench 0.30.2, whose `taehv.py` are byte-identical,
+# so this is a missing case rather than a version we can wait out.
+_PATCHED_LATENT_CHANNELS = (24,)
+
+
+class _TAEHV(taehv.TAEHV):
+    """TAEHV that honours a 12-wide decoder on a 24-channel latent.
+
+    Only the two edge convs differ from what core builds; every other layer,
+    width and activation already matches, which a strict state-dict load
+    proves (0 missing, 0 unexpected across all 128 tensors).
+    """
+
+    def __init__(self, latent_channels, **kwargs):
+        super().__init__(latent_channels, **kwargs)
+        if latent_channels in _PATCHED_LATENT_CHANNELS:
+            self.patch_size = 2
+            self.encoder[0] = taehv.conv(3 * self.patch_size ** 2, 64)
+            self.decoder[-1] = taehv.conv(64, 3 * self.patch_size ** 2)
+
+
+def _load_tiny_vae(path):
+    """Build a VAE for a tiny decoder, correcting core only where it is wrong."""
+    sd = comfy.utils.load_torch_file(path)
+    weight = sd.get("decoder.1.weight")
+    channels = weight.shape[1] if weight is not None else None
+    if channels not in _PATCHED_LATENT_CHANNELS:
+        # Every shape core already knows (taeltx2_3, taehv, taew, lighttae).
+        return comfy.sd.VAE(sd=sd)
+
+    # `comfy.sd.VAE` does all the field setup we want; it just constructs the
+    # inner model wrong. Swap the class for the duration of the call rather
+    # than duplicating that setup, which drifts silently on a ComfyUI bump.
+    original = taehv.TAEHV
+    taehv.TAEHV = _TAEHV
+    try:
+        vae = comfy.sd.VAE(sd=sd)
+    finally:
+        taehv.TAEHV = original
+
+    # Core reached this weight through its fallback branch, which assumes an 8x
+    # spatial tiny VAE and applies HunyuanVideo latent scaling to anything fp16.
+    # Both are wrong here: taeh3 is 16x spatially (a 30x54 latent decodes to
+    # 480x864) and needs no scaling, the same call core makes for Wan 2.2/LTX2.
+    vae.upscale_ratio = (lambda a: max(0, a * 4 - 3), 16, 16)
+    vae.upscale_index_formula = (4, 16, 16)
+    vae.downscale_ratio = (lambda a: max(0, math.floor((a + 3) / 4)), 16, 16)
+    vae.downscale_index_formula = (4, 16, 16)
+    vae.first_stage_model.process_in = lambda x: x
+    vae.first_stage_model.process_out = lambda x: x
+    return vae
+
+
+class MpiTinyVaeLoader:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "vae_name": (folder_paths.get_filename_list("vae"), {
+                    "tooltip": "A tiny TAEHV decoder in models/vae — taeh3 for MiniMax H3. "
+                               "Pass the result to MpiVideoSamplingPreview.",
+                }),
+            },
+        }
+
+    RETURN_TYPES = ("VAE",)
+    RETURN_NAMES = ("vae",)
+    CATEGORY = "MpiNodes/Sampling"
+    DESCRIPTION = (
+        "Loads a tiny TAEHV preview decoder that ComfyUI's own VAELoader cannot build. "
+        "Core picks the decoder width from the latent channel count and has no case for "
+        "a 24-channel latent with a 12-wide decoder, which is what MiniMax H3's taeh3 is "
+        "— VAELoader raises a state-dict size mismatch on it. Anything core already "
+        "handles is passed straight through to VAELoader's own code path, so this is a "
+        "safe drop-in for any tiny decoder."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, vae_name):
+        return (_load_tiny_vae(folder_paths.get_full_path_or_raise("vae", vae_name)),)

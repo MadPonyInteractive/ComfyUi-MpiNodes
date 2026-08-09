@@ -75,6 +75,7 @@
 - MpiBoxMask - added (mask the size of the image with the MPI_BOX drawn as a white rectangle, outputs mask + clamped box)
 
 # Version: V1.2.7
+- MpiTinyVaeLoader - added (loads a tiny TAEHV preview decoder that ComfyUI's own VAELoader cannot build. Core picks a TAEHV's decoder width from the latent channel count and has no case for MiniMax H3's taeh3, a 24-channel latent with a 12-wide decoder - VAELoader raises 'size mismatch for decoder.22.bias: [12] vs [3]' and the generation dies before sampling. Rebuilds the two edge convs at the right width, which makes a strict state-dict load match all 128 tensors, and corrects the spatial ratios and latent scaling core's fallback branch guessed wrong. Anything core already handles is delegated to VAELoader's own path)
 - MpiInpaintHeal - added (matches an inpainted region's colour and grain to a ring of untouched pixels around the mask, fixing the colour drift and flat texture generative fills leave behind)
 - MpiStyleSelector - added (one selector int + a trigger-words list drives a chain of LoRA banks; replaces the per-lora MpiMath gating workaround)
 - MpiStyleLoras - added (bank of 5 LoRA slots for MpiStyleSelector, chainable - each bank claims the next 5 selector values; outputs model, clip and prompt)

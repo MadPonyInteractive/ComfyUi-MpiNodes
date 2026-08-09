@@ -104,7 +104,7 @@ from .h3 import MpiH3Length, MpiH3References
 from .vram import MpiClearVram
 from .video import MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
 from .latent import MpiSaveLatent, MpiLoadLatent, MpiStageLatents, MpiLatentUpscale
-from .preview import MpiVideoSamplingPreview
+from .preview import MpiVideoSamplingPreview, MpiTinyVaeLoader
 
 # TEST NODES
 # from .dynamic_combo import MpiDynamicCombo
@@ -219,6 +219,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiStageLatents": MpiStageLatents,
     "MpiLatentUpscale": MpiLatentUpscale,
     "MpiVideoSamplingPreview": MpiVideoSamplingPreview,
+    "MpiTinyVaeLoader": MpiTinyVaeLoader,
     # TESTS
     # "MpiDummyToggleNode": MpiDummyToggleNode,
     # "MpiDynamicCombo": MpiDynamicCombo,
@@ -331,6 +332,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiStageLatents": "Mpi Stage Latents",
     "MpiLatentUpscale": "Mpi Latent Upscale",
     "MpiVideoSamplingPreview": "Mpi Video Sampling Preview",
+    "MpiTinyVaeLoader": "Mpi Tiny Vae Loader",
 }
 
 WEB_DIRECTORY = "./web"
