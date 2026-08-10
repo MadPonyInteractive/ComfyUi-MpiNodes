@@ -9,9 +9,9 @@ weight exists (madebyollin's `taeh3`), core just has no way to reach it, and its
 
 `MpiVideoSamplingPreview` does what `kjnodes`' LTX previewer does, without the
 LTX-specific gates: it wraps OUTER_SAMPLE, decodes `x0` through a tiny TAEHV VAE,
-and streams the frames as ordinary binary PREVIEW_IMAGE messages, paced in real
-time so the preview plays at the clip's own speed instead of flickering once per
-step.
+and streams the frames as ordinary binary PREVIEW_IMAGE messages — a whole clip
+per sampler step, so the consumer can play the motion back at the clip's own
+speed instead of flickering one still per step.
 
 WHY THAT TRANSPORT AND NOT A NODE WIDGET: a host app driving ComfyUI over the
 websocket already consumes binary previews. `ModelPreviewOverrideKJ` base64s its
@@ -28,9 +28,7 @@ works — but H3 is what it was built and tested for.
 
 import math
 import struct
-import time
 from io import BytesIO
-from threading import Thread
 
 import torch  # type: ignore
 import torch.nn.functional as F  # type: ignore
@@ -48,39 +46,50 @@ _PREVIEW_MAX = 512
 _PREVIEW_MIN = 256
 
 
-def _temporal_ratio(model_patcher, fallback: int = 1) -> int:
-    """How many pixel frames the tiny decoder returns per latent frame.
+def _decode_clip(model, latent):
+    """[B,C,T,H,W] latent -> [B,3,T,H,W] pixels, in the decoder's own chunking.
 
-    Read off the model's own latent format (`temporal_downscale_ratio`) rather
-    than hardcoded: it is 4 for H3 and 8 for LTX, and getting it wrong only
-    shows up as a frame index that wraps at the wrong point — no error, just a
-    preview that stutters or repeats.
+    A TAEHV is TEMPORAL: its MemBlocks chain state forward, so frame N is only
+    correct if every frame before it was decoded in the same pass. Always decode
+    from frame 0. Sampling a window out of the middle with cold state is not a
+    cheaper approximation, it is garbage — that is what green previews were.
+
+    H3 additionally codes 17 pixel frames per 5 latent tokens, and `TAEHV.decode`
+    trims `frames_to_trim` ONCE globally, which leaves every later chunk carrying
+    its own 3 pad frames. Trim per chunk instead and drop the encoder's 3-token
+    tail pad, as kjnodes' `TAEHVDecoder._decode_h3_full` does. Any other tiny
+    decoder core sizes correctly (taeltx2_3, taehv, taew) takes the plain path.
     """
-    try:
-        ratio = int(getattr(model_patcher.model.latent_format, "temporal_downscale_ratio", fallback))
-        return max(1, ratio)
-    except Exception:
-        return fallback
+    if getattr(model, "latent_channels", None) != 24 or getattr(model, "patch_size", 1) != 2:
+        return model.decode(latent)
+
+    x = model.process_in(latent).movedim(2, 1)  # [B,C,T,H,W] -> [B,T,C,H,W]
+    x = taehv.apply_model_with_memblocks(
+        model.decoder, x, model.parallel, False,
+        output_device=mm.intermediate_device(), patch_size=model.patch_size, decode=True,
+    )
+    chunk = 5 * model.t_upscale
+    x = F.pad(x, (0, 0, 0, 0, 0, 0, 0, -x.shape[1] % chunk))
+    x = x.unflatten(1, (-1, chunk))[:, :, model.frames_to_trim:].flatten(1, 2)
+    x = x[:, :-3 * model.t_upscale]
+    return x.movedim(2, 1) if x.shape[1] else model.decode(latent)
 
 
 class _TinyVaePreviewer:
-    """Rate-limited frame cursor over the in-progress latent.
+    """Decodes the in-progress latent as a WHOLE CLIP, once per sampler step.
 
-    One preview call does NOT mean one frame. The sampler calls back once per
-    step, but a step is slow and a clip has many frames, so each call decodes
-    however many frames real time has earned since the last one (`rate` fps) and
-    walks a cursor around the clip. That is what makes the preview play at the
-    video's own speed instead of jumping a frame per step.
+    One preview call does NOT mean one frame: the sampler calls back once per
+    step and each call bursts the entire clip, which the `VHS_latentpreview`
+    marker tells the consumer to accumulate and loop at `rate` fps. Decoding the
+    whole thing is not a cost choice either — see `_decode_clip`, a temporal
+    decoder cannot produce frame N without the frames before it.
     """
 
-    def __init__(self, vae, rate: float, ratio: int, latent_shapes=None):
+    def __init__(self, vae, rate: float, latent_shapes=None):
         self.vae = vae
         self.rate = max(1.0, float(rate))
-        self.ratio = ratio
         self.latent_shapes = latent_shapes
         self.first = True
-        self.last_time = 0.0
-        self.cursor = 0
 
     def push(self, x0):
         srv = server.PromptServer.instance
@@ -99,20 +108,17 @@ class _TinyVaePreviewer:
             x0 = x0.tensors[0]
         elif self.latent_shapes and len(self.latent_shapes) > 1:
             x0 = comfy.utils.unpack_latents(x0, self.latent_shapes)[0]
-        if x0.ndim == 5:
-            # [B,C,T,H,W] -> frames as batch, so a slice of frames decodes as a batch.
-            x0 = x0.movedim(2, 1).reshape((-1,) + tuple(x0.shape[-3:]))
-        elif x0.ndim != 4:
+        if x0.ndim == 4:
+            x0 = x0.unsqueeze(2)  # a still latent [B,C,H,W] decodes as a 1-frame clip
+        if x0.ndim != 5:
             return
 
-        num_latent_frames = x0.size(0)
-        now = time.time()
-        earned = int((now - self.last_time) * self.rate)
-        if earned > num_latent_frames:
-            earned = num_latent_frames
-        elif earned <= 0:
+        # ponytail: whole clip, every step. 6-step H3 makes that ~6 tiny-VAE
+        # decodes a run; a long sampler on a long clip would want a wall-clock
+        # throttle here.
+        images = self._decode(x0[:1])
+        if images.size(0) == 0:
             return
-        self.last_time = self.last_time + earned / self.rate
 
         if self.first:
             self.first = False
@@ -120,30 +126,25 @@ class _TinyVaePreviewer:
             # through and how fast. Sent once, before any frame.
             srv.send_sync(
                 "VHS_latentpreview",
-                {"length": num_latent_frames * self.ratio, "rate": self.rate, "id": srv.last_node_id},
+                {"length": images.size(0), "rate": self.rate, "id": srv.last_node_id},
             )
-            self.last_time = now + 1.0 / self.rate
-
-        if self.cursor + earned > num_latent_frames:
-            batch = x0.roll(-self.cursor, 0)[:earned]
-        else:
-            batch = x0[self.cursor:self.cursor + earned]
-        # .run() not .start(): decode on the calling thread so the GPU work stays
-        # serialised with sampling. A second CUDA stream here fights the sampler
-        # for VRAM mid-step, which is how a preview turns into an OOM.
-        Thread(target=self._send, args=(batch, self.cursor * self.ratio, num_latent_frames)).run()
-        self.cursor = (self.cursor + earned) % num_latent_frames
+        self._send(images)
 
     def _decode(self, latent):
+        """[1,C,T,H,W] -> [T,H,W,3].
+
+        Runs on the calling thread so the GPU work stays serialised with
+        sampling. A second CUDA stream here fights the sampler for VRAM
+        mid-step, which is how a preview turns into an OOM.
+        """
         model = self.vae.first_stage_model
         dtype = model.decoder[1].weight.dtype
-        latent = latent.unsqueeze(0).to(dtype=dtype, device=mm.get_torch_device())
-        # TAEHV returns [B,C,T,H,W]; drop batch and put channels last for PIL.
-        return model.decode(latent)[0].permute(1, 2, 3, 0)
+        latent = latent.to(dtype=dtype, device=mm.get_torch_device())
+        # Decode returns [B,3,T,H,W]; drop batch and put channels last for PIL.
+        return _decode_clip(model, latent)[0].permute(1, 2, 3, 0)
 
-    def _send(self, latent, index, num_latent_frames):
+    def _send(self, images):
         srv = server.PromptServer.instance
-        images = self._decode(latent)
 
         if images.size(1) < _PREVIEW_MIN or images.size(2) < _PREVIEW_MIN:
             images = F.interpolate(images.movedim(-1, 0), scale_factor=4, mode="nearest").movedim(0, -1)
@@ -158,8 +159,7 @@ class _TinyVaePreviewer:
             images = chw.movedim(0, -1)
 
         frames = (images.clamp(0, 1).mul(0xFF)).to(device="cpu", dtype=torch.uint8)
-        span = max(1, (num_latent_frames - 1) * self.ratio + 1)
-        for frame in frames:
+        for index, frame in enumerate(frames):
             message = BytesIO()
             # Same envelope kjnodes' LTX previewer uses, which is what the
             # VHS-style consumer expects: event type 1 twice, frame index, then
@@ -171,7 +171,6 @@ class _TinyVaePreviewer:
             srv.send_sync(
                 server.BinaryEventTypes.PREVIEW_IMAGE, message.getvalue(), srv.client_id
             )
-            index = (index + 1) % span
 
 
 class _PreviewWrapper:
@@ -181,10 +180,7 @@ class _PreviewWrapper:
 
     def __call__(self, executor, noise, latent_image, sampler, sigmas, denoise_mask,
                  callback, disable_pbar, seed, latent_shapes=None):
-        previewer = _TinyVaePreviewer(
-            self.vae, self.rate, _temporal_ratio(executor.class_obj.model_patcher),
-            latent_shapes,
-        )
+        previewer = _TinyVaePreviewer(self.vae, self.rate, latent_shapes)
         # Pin the tiny VAE to the sampling device: it is ~22MB and reloading it
         # per step costs more than the decode.
         try:
@@ -227,9 +223,10 @@ class MpiVideoSamplingPreview:
                 }),
                 "preview_rate": ("FLOAT", {
                     "default": 8.0, "min": 1.0, "max": 60.0, "step": 0.5,
-                    "tooltip": "Preview playback speed in frames per second. Frames are "
-                               "decoded as real time earns them, so this is a cost dial as "
-                               "much as a smoothness one.",
+                    "tooltip": "Playback speed in frames per second, announced to the "
+                               "consumer with the clip. Every step decodes the whole clip "
+                               "(a temporal decoder cannot skip frames), so this paces "
+                               "playback, not cost.",
                 }),
             },
         }
