@@ -535,10 +535,16 @@ class MpiBox:
             "required": {
                 "width": ("INT", {"default": 512, "min": 0, "max": 0xFFFFFFFF}),
                 "height": ("INT", {"default": 512, "min": 0, "max": 0xFFFFFFFF}),
-                "x": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFF,
-                              "tooltip": "Left edge of the box, in pixels."}),
-                "y": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFF,
-                              "tooltip": "Top edge of the box, in pixels."}),
+                # x/y accept NEGATIVE values: a box may start left of / above the
+                # image so it can sit tight on a subject at the frame edge without
+                # growing until it swallows the neighbour. Widening a widget range
+                # cannot break a saved workflow - every stored value is still legal.
+                "x": ("INT", {"default": 0, "min": -0xFFFFFFFF, "max": 0xFFFFFFFF,
+                              "tooltip": "Left edge of the box, in pixels. May be "
+                                         "negative to start outside the image."}),
+                "y": ("INT", {"default": 0, "min": -0xFFFFFFFF, "max": 0xFFFFFFFF,
+                              "tooltip": "Top edge of the box, in pixels. May be "
+                                         "negative to start outside the image."}),
             }
         }
 
@@ -582,7 +588,15 @@ class MpiBoxCrop:
             "required": {
                 "image": ("IMAGE",),
                 "mpi_box": ("MPI_BOX", {"forceInput": True}),
-            }
+            },
+            "optional": {
+                "pad": ("BOOLEAN", {"default": False,
+                                    "tooltip": "Pad the crop back out to the "
+                                               "requested box size when the box "
+                                               "overhangs the image, replicating "
+                                               "the edge pixels. Off, the crop is "
+                                               "just the intersection."}),
+            },
         }
 
     RETURN_TYPES = ("IMAGE", "MPI_BOX")
@@ -592,17 +606,38 @@ class MpiBoxCrop:
         "Crop an image to an MPI_BOX region. The box is clamped to the image; "
         "a box fully outside the image passes the image through unchanged. "
         "Also outputs the clamped box, so downstream nodes see the region "
-        "actually used."
+        "actually used. With pad on, an overhanging box is padded back out to "
+        "its requested size by edge replication, so the crop keeps the aspect "
+        "that was asked for - which is what a square reference crop needs."
     )
     FUNCTION = "crop"
 
-    def crop(self, image, mpi_box):
+    def crop(self, image, mpi_box, pad=False):
         _, H, W, _ = image.shape
         x, y, w, h = clamp_box(mpi_box, W, H)
         # ponytail: empty intersection passes through rather than erroring mid-graph
         if w == 0 or h == 0:
             return (image, (x, y, 0, 0))
-        return (image[:, y:y + h, x:x + w, :], (x, y, w, h))
+        cropped = image[:, y:y + h, x:x + w, :]
+        if not pad:
+            return (cropped, (x, y, w, h))
+
+        # Pad the intersection back out to the REQUESTED box. Only the sides that
+        # were actually trimmed grow, so a box fully inside the image is untouched
+        # and this stays a no-op for every existing graph.
+        rx, ry, rw, rh = (int(v) for v in mpi_box)
+        left, top = x - rx, y - ry
+        right, bottom = (rx + rw) - (x + w), (ry + rh) - (y + h)
+        left, top = max(0, left), max(0, top)
+        right, bottom = max(0, right), max(0, bottom)
+        if not (left or top or right or bottom):
+            return (cropped, (x, y, w, h))
+        # F.pad wants [N, C, H, W] and pads the last two dims; the tensor here is
+        # [B, H, W, C]. 'replicate' extends the edge pixels, which reads as the
+        # subject continuing rather than a hard border the model will try to draw.
+        chw = cropped.permute(0, 3, 1, 2)
+        padded = torch.nn.functional.pad(chw, (left, right, top, bottom), mode="replicate")
+        return (padded.permute(0, 2, 3, 1), (rx, ry, rw, rh))
 
 
 class MpiBoxMask:
