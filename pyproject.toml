@@ -1,8 +1,8 @@
 [project]
 name = "ComfyUi-MpiNodes"
 description = """Multiple utilities for ComfyUI"""
-version = "1.2.6"  # trigger release
-license = "LICENSE"
+version = "1.2.7"
+license = { file = "LICENSE" }
 
 [project.urls]
 Repository = "https://github.com/MadPonyInteractive/ComfyUi-MpiNodes"
@@ -14,5 +14,5 @@ DisplayName = "ComfyUi-MpiNodes"
 Icon = ""
 includes = [] 
 # "requires-comfyui" = ">=1.0.0"  # ComfyUI version compatibility
-# trigger workflow v1.2.5
+# trigger workflow v1.2.7
 

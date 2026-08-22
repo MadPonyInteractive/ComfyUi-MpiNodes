@@ -4,6 +4,12 @@ A ComfyUI custom node pack by [Mad Pony Interactive](https://github.com/MadPonyI
 
 [![Registry](https://img.shields.io/badge/Comfy%20Registry-mad--pony--interactive-blue)](https://registry.comfy.org/publishers/mad-pony-interactive/nodes/ComfyUi-MpiNodes)
 
+**These nodes power [Cubric Vision](https://github.com/MadPonyInteractive/Cubric-Vision)** — a free,
+open-source desktop app for AI image and video generation. Vision installs and manages ComfyUI,
+the models and this pack for you, and wraps them in a real editing UI: gallery, masking,
+inpainting, painting, cropping and project management. If you found this pack through one of our
+workflows, the app is where those workflows come from.
+
 
 ---
 
@@ -199,6 +205,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 |---|---|
 | **MpiSaveLatent** | Save a latent to `<output>/latents/<filename>.latent` (or an absolute path), overwriting, then either stop the branch there or carry on — the `boolean` widget is the same continue/block gate as MpiBlocker. Unlike the core Save Latent node it handles packed audio+video latents (MiniMax H3's NestedTensor pair, which has no `.contiguous()` and crashes core). Single-tensor files stay byte-compatible with core Load Latent. The BOOLEAN output is never blocked, so it can drive a second branch. **This is an output node, so ComfyUI runs it on every submit** — set `enabled` false on runs that must not save (a stage-2 continue), or it drags the sampler feeding it along too. |
 | **MpiLoadLatent** | Load a latent written by MpiSaveLatent and continue the run — the second half of a two-stage sample. Rebuilds a packed audio+video pair (H3) or a plain tensor. Filename is a plain text field, not a dropdown, so a file written this session needs no UI refresh. A missing file blocks the latent output and reports `loaded` false, so the other branch can generate it instead. |
+| **MpiStageLatents** | The two-stage latent handshake in ONE node: saves stage 1, gates the preview, and loads the latent back on a continue. `is_continue` / `is_preview` are **widgets**, so a host app drives both stages of a single workflow file instead of shipping a `_stage2` twin — a continue requests no latent inputs, so the stage-1 sampler is genuinely skipped rather than run and discarded. A missing latent **raises** instead of blocking every branch, which would otherwise leave a silent no-output run. Handles the packed audio+video latents (MiniMax H3) that crash core Save/Load Latent. |
 | **MpiLatentUpscale** | Upscale a latent to a target given in **pixels**, dividing by the model's own VAE `stride` instead of core's hardcoded `// 8`. Two fixes in one node. Core's Upscale Latent crashes on a packed audio+video latent (`AttributeError: 'NestedTensor' object has no attribute 'reshape'`, because `common_upscale` reshapes) — this unbinds the pair, scales only the half with spatial dims (picked by `dim() >= 5`, not by index) and passes the audio half `[B,32,2,T]` through untouched. And core assumes the SD VAE factor, so an H3 target typed in pixels comes out at DOUBLE with no error at all — set `stride` 16 for MiniMax H3 and Krea2, 8 for the SD/SDXL family, and the number you type is the number you get. Built for the hi-res fix: small stage 1, upscale here, let stage 2's low sigmas finish at the target so only half the denoise pays for the resolution. |
 
 ### Sampling
@@ -212,4 +219,11 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 
 ## License
 
-[MIT](https://choosealicense.com/licenses/mit/)
+[GNU AGPL-3.0](LICENSE) — the same licence as Cubric Vision, and compatible with
+ComfyUI's GPL-3.0 (GPLv3 §13).
+
+Free to use, modify and share. If you build on this pack, your work carries the same
+licence — including when it is offered to others over a network.
+
+> Versions up to and including 1.2.6 were published under MIT. That grant stands for
+> those versions; 1.2.7 onward is AGPL-3.0.
