@@ -85,10 +85,11 @@ class _TinyVaePreviewer:
     decoder cannot produce frame N without the frames before it.
     """
 
-    def __init__(self, vae, rate: float, latent_shapes=None):
+    def __init__(self, vae, rate: float, latent_shapes=None, num_keyframes=0):
         self.vae = vae
         self.rate = max(1.0, float(rate))
         self.latent_shapes = latent_shapes
+        self.num_keyframes = num_keyframes
         self.first = True
 
     def push(self, x0):
@@ -112,6 +113,14 @@ class _TinyVaePreviewer:
             x0 = x0.unsqueeze(2)  # a still latent [B,C,H,W] decodes as a 1-frame clip
         if x0.ndim != 5:
             return
+
+        # Guide latents ride at the END of the video stream. LTXVAddGuide appends
+        # one per conditioning image and records their positions in the positive
+        # cond's `keyframe_idxs`; they are model input, not clip, so previewing
+        # them shows the user their own input frames pasted onto the tail. H3
+        # never had any, which is why this node did not need it until LTX.
+        if 0 < self.num_keyframes < x0.shape[2]:
+            x0 = x0[:, :, :-self.num_keyframes]
 
         # ponytail: whole clip, every step. 6-step H3 makes that ~6 tiny-VAE
         # decodes a run; a long sampler on a long clip would want a wall-clock
@@ -173,6 +182,20 @@ class _TinyVaePreviewer:
             )
 
 
+def _count_keyframes(executor):
+    """How many guide latents the positive cond appended, 0 if none.
+
+    Same read kjnodes' LTX previewer does. `keyframe_idxs` is [B,1,N,3] and one
+    guide image can occupy several rows, so the count is the unique frame index.
+    """
+    try:
+        positive = executor.class_obj.conds["positive"]
+        idxs = positive[0].get("keyframe_idxs") if positive else None
+        return 0 if idxs is None else len(torch.unique(idxs[0, 0, :, 0]))
+    except Exception:
+        return 0
+
+
 class _PreviewWrapper:
     def __init__(self, vae, rate):
         self.vae = vae
@@ -180,7 +203,8 @@ class _PreviewWrapper:
 
     def __call__(self, executor, noise, latent_image, sampler, sigmas, denoise_mask,
                  callback, disable_pbar, seed, latent_shapes=None):
-        previewer = _TinyVaePreviewer(self.vae, self.rate, latent_shapes)
+        previewer = _TinyVaePreviewer(self.vae, self.rate, latent_shapes,
+                                      _count_keyframes(executor))
         # Pin the tiny VAE to the sampling device: it is ~22MB and reloading it
         # per step costs more than the decode.
         try:

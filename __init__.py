@@ -105,6 +105,7 @@ from .vram import MpiClearVram
 from .video import MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
 from .latent import MpiSaveLatent, MpiLoadLatent, MpiStageLatents, MpiLatentUpscale
 from .preview import MpiVideoSamplingPreview, MpiTinyVaeLoader
+from .splat import MpiBrushTrain
 
 # TEST NODES
 # from .dynamic_combo import MpiDynamicCombo
@@ -220,6 +221,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiLatentUpscale": MpiLatentUpscale,
     "MpiVideoSamplingPreview": MpiVideoSamplingPreview,
     "MpiTinyVaeLoader": MpiTinyVaeLoader,
+    "MpiBrushTrain": MpiBrushTrain,
     # TESTS
     # "MpiDummyToggleNode": MpiDummyToggleNode,
     # "MpiDynamicCombo": MpiDynamicCombo,
@@ -333,6 +335,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiLatentUpscale": "Mpi Latent Upscale",
     "MpiVideoSamplingPreview": "Mpi Video Sampling Preview",
     "MpiTinyVaeLoader": "Mpi Tiny Vae Loader",
+    "MpiBrushTrain": "Mpi Brush Train",
 }
 
 WEB_DIRECTORY = "./web"

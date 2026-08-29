@@ -320,6 +320,16 @@ def wrap_in_underscores(s):
     return f"_{cleaned}_" if cleaned else ""
 
 
+def sha256_file(path, chunk_size=1024 * 1024):
+    # Hex SHA-256 of a file, read in chunks — the binaries this verifies are
+    # hundreds of MB and must never be slurped into memory whole.
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(chunk_size), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
 def pick_seeded_item(items, seed):
     # Picks an item from a list
     random.seed(seed)
