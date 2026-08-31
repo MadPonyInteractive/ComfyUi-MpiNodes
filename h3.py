@@ -496,6 +496,49 @@ class MpiH3MaskedPrefix:
         return (out, frames, new_frames, report)
 
 
+class MpiH3EncodeAV:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "vae": ("VAE", {"tooltip": "The H3 video VAE."}),
+                "images": ("IMAGE", {"tooltip": "The clip's frames at 24 fps, as ONE batch - encoding them in separate calls throws away the motion the temporal packing carries."}),
+                "audio_vae": ("VAE", {"tooltip": "The H3 audio VAE."}),
+                "audio": ("AUDIO", {"tooltip": "The clip's soundtrack. Resampled to the audio VAE's own rate if it does not already match."}),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("latent",)
+    CATEGORY = "MpiNodes/Utils"
+    DESCRIPTION = (
+        "Encode a clip and its soundtrack into ONE MiniMax H3 AV latent, which is "
+        "what MpiH3MaskedPrefix takes as its context. Core encodes the two streams "
+        "separately (VAEEncode + VAEEncodeAudio) and exposes no way to join them, so "
+        "without this the only route to a joint latent is a third-party fork."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, vae, images, audio_vae, audio):
+        # Imported here, not at module scope, so the pack still loads on a
+        # ComfyUI without H3 -- same reason as MpiH3References.
+        import torchaudio
+        import comfy.nested_tensor
+
+        video_z = vae.encode(images[..., :3])
+
+        waveform = audio["waveform"]
+        rate = audio["sample_rate"]
+        vae_rate = getattr(audio_vae, "audio_sample_rate", 32000)
+        if rate != vae_rate:
+            waveform = torchaudio.functional.resample(waveform, rate, vae_rate)
+        # Batch 1 only: H3 is batch size 1 on both streams, and a second item
+        # here would pair the wrong soundtrack to the picture rather than fail.
+        audio_z = audio_vae.encode(waveform[:1].movedim(1, -1))
+
+        return ({"samples": comfy.nested_tensor.NestedTensor((video_z, audio_z))},)
+
+
 def _unpack_av(latent, name: str):
     """Split an H3 AV latent into its video and audio tensors."""
     samples = latent.get("samples") if isinstance(latent, dict) else None
