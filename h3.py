@@ -312,6 +312,203 @@ class MpiH3References:
         return (cond, latent, ref_tag_map(image_slots, video_slots, audio_slots))
 
 
+# ---------------------------------------------------------------------------
+# Masked prefix -- continuing a clip without regenerating its tail
+# ---------------------------------------------------------------------------
+#
+# To continue a clip, write its encoded tail into the FRONT of the target latent
+# and protect it with a noise mask (0 = preserve, 1 = generate). The model then
+# only ever generates the part after it. Core has every piece of this except the
+# composition: `samplers.py` blends `x*mask + latent_image*(1-mask)` each step,
+# `MiniMaxH3.scale_latent_inpaint` hands the preserved region back UNSCALED, and
+# `extra_conds` splits a nested mask into the video and audio halves so
+# `process_timestep` can zero the timestep on preserved tokens. So this node is
+# arithmetic and slicing, not model code.
+#
+# The alternative -- attaching the tail as keyframe conditioning and letting the
+# model regenerate it -- pays for those frames on every extend and needs a trim.
+#
+# EVERY rule below fails SILENTLY. A context length off the grid does not raise;
+# it renders a clip that reads as a bad model.
+
+FRAME_PER_TOKEN = (1, 4, 4, 4, 4)
+AUDIO_LATENT_FPS = 40
+# Valid context lengths are the frame counts that sit on H3's 17k+5 video grid
+# AND divide by 3, so they also land on a whole audio latent step (40 Hz against
+# 24 fps is 5/3 steps per frame). That is n = 51j + 39: 39, 90, 141, 192, ...
+# 39 frames = 1.625 s = exactly 65 audio steps. Anything else leaves a fractional
+# overhang and the audio seam drifts against the picture.
+_CONTEXT_BASE = 39
+_CONTEXT_STEP = 51
+
+
+def is_valid_context(frames: int) -> bool:
+    """True for the frame counts that land on BOTH clocks."""
+    return frames >= _CONTEXT_BASE and (frames - _CONTEXT_BASE) % _CONTEXT_STEP == 0
+
+
+def snap_context_frames(frames: int) -> int:
+    """Largest valid context length <= `frames`, or 0 if none fits.
+
+    DOWN, never nearest and never up. Snapping up would ask for context the clip
+    does not have; the tail slice would then start before the clip does.
+    """
+    if frames < _CONTEXT_BASE:
+        return 0
+    return _CONTEXT_BASE + _CONTEXT_STEP * ((frames - _CONTEXT_BASE) // _CONTEXT_STEP)
+
+
+def tail_span(total_steps: int, steps: int) -> int:
+    """Pixel frames covered by the LAST `steps` latent steps of a clip.
+
+    The video VAE packs frames per latent step on a period-5 cycle (1, 4, 4, 4,
+    4), so a step's span depends on its ABSOLUTE index, not on its distance from
+    the end. Counting from the end without that is trap 1 in the brief: ten
+    reference frames encode to the same two latent steps as five, and the tail
+    then covers frames [-10..-6] instead of [-5..-1]. The seam lands five frames
+    early and the continuation carries on from an instant that never happened.
+    """
+    return sum(FRAME_PER_TOKEN[k % 5] for k in range(max(0, total_steps - steps), total_steps))
+
+
+def plan_context(total_steps: int, wanted_frames: int):
+    """Pick the tail of a clip that is a valid context length.
+
+    Returns `(steps, frames, audio_steps)`, or `(0, 0, 0)` when the clip is too
+    short. Walks the step count DOWN and measures each candidate's true span, so
+    it stays right for a source clip whose own length is off the grid -- which is
+    any clip that came in through a video loader rather than a prior sample.
+    """
+    for steps in range(min(total_steps, max(1, wanted_frames)), 0, -1):
+        frames = tail_span(total_steps, steps)
+        if frames > wanted_frames:
+            continue
+        if is_valid_context(frames):
+            return steps, frames, frames * AUDIO_LATENT_FPS // FPS_I
+    return 0, 0, 0
+
+
+FPS_I = 24
+
+
+class MpiH3MaskedPrefix:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "latent": ("LATENT", {"tooltip": "The TARGET AV latent, at the full output length - straight from MiniMaxH3ImageToVideo, MiniMaxH3ReferenceToVideo or EmptyMiniMaxH3LatentAV. Its canvas must match the context clip's."}),
+                "context_latent": ("LATENT", {"tooltip": "The prior clip as an AV latent. Encode the whole context run in ONE VAE call - encoding frame by frame throws away the motion the temporal packing carries."}),
+                "context_frames": (
+                    "INT",
+                    {
+                        "default": 39,
+                        "min": 39,
+                        "max": 1000,
+                        "step": 51,
+                        "tooltip": "How much of the prior clip to keep, in frames at 24 fps. Snapped DOWN to 39 / 90 / 141 / 192 ... - the only lengths that land on the video grid AND on a whole audio step. 39 frames is 1.625 s.",
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT", "INT", "INT", "STRING")
+    RETURN_NAMES = ("latent", "context_frames", "new_frames", "report")
+    CATEGORY = "MpiNodes/Utils"
+    DESCRIPTION = (
+        "Continue a MiniMax H3 clip by writing its encoded tail into the front of the "
+        "target latent and masking that region out of sampling, so the model generates "
+        "only what comes after it. Nothing is regenerated and nothing has to be trimmed, "
+        "which is what separates this from the keyframe/guide route. `context_frames` is "
+        "snapped DOWN to 39 / 90 / 141 ...: those are the only lengths that sit on H3's "
+        "17k+5 video grid and also divide by 3, so audio's 40 Hz clock lands on a whole "
+        "step too. Off-grid values do not raise, they drift the audio against the picture "
+        "and start the continuation from a moment that never happened, so the snap is "
+        "reported rather than assumed. The output latent carries a nested video+audio "
+        "noise mask (0 preserve, 1 generate) that core's sampler already understands. "
+        "Do NOT put a first-frame guide inside the preserved head - it fights the prefix "
+        "that already owns those frames."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, latent, context_latent, context_frames):
+        # Imported here, not at module scope, so the pack still loads on a
+        # ComfyUI without H3 -- same reason as MpiH3References.
+        import torch
+        import comfy.nested_tensor
+
+        target_v, target_a = _unpack_av(latent, "latent")
+        ctx_v, ctx_a = _unpack_av(context_latent, "context_latent")
+
+        if target_v.shape[0] != 1 or ctx_v.shape[0] != 1:
+            raise ValueError("MiniMax H3 is batch size 1 on both streams.")
+        if target_v.shape[3:] != ctx_v.shape[3:]:
+            raise ValueError(
+                "The context clip and the target must share a canvas: context is "
+                f"{ctx_v.shape[4] * 16}x{ctx_v.shape[3] * 16}, target is "
+                f"{target_v.shape[4] * 16}x{target_v.shape[3] * 16}."
+            )
+
+        wanted = snap_context_frames(context_frames)
+        steps, frames, audio_steps = plan_context(ctx_v.shape[2], wanted)
+        if steps == 0:
+            aligned = ctx_v.shape[2] % 5 == 2
+            raise ValueError(
+                f"No valid context fits in this clip ({ctx_v.shape[2]} latent steps, "
+                f"{tail_span(ctx_v.shape[2], ctx_v.shape[2])} frames). "
+                + ("It is shorter than the 39-frame minimum." if aligned else
+                   "Its frame count is off H3's 17k+5 grid, which shifts the VAE's "
+                   "packing phase so no tail of it lands on a legal length. Trim the "
+                   "source to 17k+5 frames (39, 56, 73, ...) BEFORE encoding it.")
+            )
+        if steps >= target_v.shape[2]:
+            raise ValueError(
+                f"A {frames}-frame context leaves no room in a target of "
+                f"{tail_span(target_v.shape[2], target_v.shape[2])} frames."
+            )
+        if audio_steps > ctx_a.shape[-1] or audio_steps >= target_a.shape[-1]:
+            raise ValueError(
+                f"The audio streams cannot hold a {frames}-frame prefix ({audio_steps} steps): "
+                f"context has {ctx_a.shape[-1]}, target has {target_a.shape[-1]}."
+            )
+
+        out_v = target_v.clone()
+        out_a = target_a.clone()
+        out_v[:, :, :steps] = ctx_v[:, :, ctx_v.shape[2] - steps:].to(out_v)
+        out_a[..., :audio_steps] = ctx_a[..., ctx_a.shape[-1] - audio_steps:].to(out_a)
+
+        # Built at the latent's own resolution on purpose. core's reshape_mask
+        # INTERPOLATES a mask that does not match (trilinear for video, bilinear
+        # for audio), which would smear the one boundary that has to stay hard.
+        mask_v = torch.ones((1, 1) + tuple(out_v.shape[2:]), dtype=torch.float32)
+        mask_a = torch.ones((1, 1) + tuple(out_a.shape[2:]), dtype=torch.float32)
+        mask_v[:, :, :steps] = 0.0
+        mask_a[..., :audio_steps] = 0.0
+
+        new_frames = tail_span(out_v.shape[2], out_v.shape[2]) - frames
+        report = (
+            f"context {frames} frames ({steps} latent steps, {audio_steps} audio steps)"
+            f" + {new_frames} new; asked for {context_frames}"
+        )
+
+        out = dict(latent)
+        out["samples"] = comfy.nested_tensor.NestedTensor((out_v, out_a))
+        out["noise_mask"] = comfy.nested_tensor.NestedTensor((mask_v, mask_a))
+        return (out, frames, new_frames, report)
+
+
+def _unpack_av(latent, name: str):
+    """Split an H3 AV latent into its video and audio tensors."""
+    samples = latent.get("samples") if isinstance(latent, dict) else None
+    if samples is None:
+        raise ValueError(f"`{name}` is not a latent.")
+    if not getattr(samples, "is_nested", False):
+        raise ValueError(
+            f"`{name}` carries video only. MiniMax H3 needs a joint video+audio latent - "
+            "give the encode node an audio_vae and the clip's soundtrack."
+        )
+    return samples.tensors[0], samples.tensors[1]
+
+
 if __name__ == "__main__":
     # Self-check: the slot filtering and the tag map, with stand-ins for the
     # tensors so it runs under bare `python h3.py`. The renumbering is the part
@@ -395,4 +592,49 @@ if __name__ == "__main__":
 
     assert collect_refs({})["packed"] == ({}, {}, {}, {})
     assert snap_h3_frames(96) == 90 and snap_h3_frames(5) == 5
+
+    # --- masked prefix: the arithmetic that fails silently -----------------
+    # The only context lengths on BOTH clocks. 39 / 90 / 141 are the ones the
+    # brief names; the rest of the family follows the same +51 step.
+    assert [n for n in range(1, 200) if is_valid_context(n)] == [39, 90, 141, 192]
+    # Every one of them is on the 17k+5 video grid AND a whole audio step.
+    for n in (39, 90, 141, 192):
+        assert n % 17 == 5 and n % 3 == 0
+        assert n * AUDIO_LATENT_FPS % FPS_I == 0
+    assert 39 * AUDIO_LATENT_FPS // FPS_I == 65      # the brief's worked example
+
+    # Snapping is DOWN. 89 frames of context must become 39, never 90 -- 90 is
+    # context the clip may not have.
+    assert snap_context_frames(89) == 39
+    assert snap_context_frames(90) == 90
+    assert snap_context_frames(141) == 141
+    assert snap_context_frames(38) == 0
+
+    # A step's span depends on its absolute index, not its distance from the end.
+    # A clip on the grid has 5k+2 steps, and its trailing 5 steps are always 17
+    # frames -- but the FIRST step of any clip is only 1 frame.
+    assert tail_span(2, 2) == 5 and tail_span(7, 7) == 22 and tail_span(12, 12) == 39
+    assert tail_span(37, 37) == 124                  # the core node's default
+    assert tail_span(37, 12) == 39 and tail_span(37, 27) == 90
+    assert tail_span(37, 5) == 17
+
+    # A 124-frame source gives a 39-frame context out of its last 12 steps.
+    assert plan_context(37, 39) == (12, 39, 65)
+    # Asking for more than the clip holds yields the largest that fits, not an error.
+    assert plan_context(12, 141) == (12, 39, 65)
+    # A clip too short for any valid context reports so instead of guessing.
+    assert plan_context(7, 39) == (0, 0, 0)
+    # A 73-frame source (17*4+5, so 22 latent steps) is what a real prior clip
+    # looks like, and 39 frames of it is a legal context.
+    assert tail_span(22, 22) == 73 and plan_context(22, 39) == (12, 39, 65)
+
+    # OFF-GRID SOURCE: 30 steps is not 5k+2, so the packing phase is shifted and
+    # NO tail of it lands on a valid context length -- the reachable spans run
+    # 4, 8, 12, 16, 17, 21, ... and never hit 39 or 90. This is a real constraint,
+    # not a rounding nuisance: a clip must be trimmed to 17k+5 frames BEFORE it is
+    # encoded, or it cannot be continued at all. Reporting nothing is the correct
+    # answer here; the node raises rather than picking a near-miss.
+    assert plan_context(30, 90) == (0, 0, 0)
+    assert 39 not in {tail_span(30, s) for s in range(1, 31)}
+
     print("h3.py self-check passed")
