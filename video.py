@@ -116,16 +116,25 @@ def _probe_video_meta(ffmpeg, path):
     return w, h, fps
 
 
-def _decode_frames(ffmpeg, path, w, h):
+def _decode_cmd(ffmpeg, path, force_rate=0.0):
+    """The rawvideo decode command, with force_rate as an OUTPUT option so
+    ffmpeg drops/duplicates frames inside the single pass we already make."""
+    cmd = [ffmpeg, "-i", path]
+    if force_rate and force_rate > 0:
+        cmd += ["-r", f"{force_rate:g}"]
+    return cmd + ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+
+
+def _decode_frames(ffmpeg, path, w, h, force_rate=0.0):
     """Decode all frames to an IMAGE tensor [N, H, W, 3] in 0..1 via a raw
-    rgb24 pipe. One ffmpeg pass, no intermediate files, no preview."""
+    rgb24 pipe. One ffmpeg pass, no intermediate files, no preview.
+
+    force_rate > 0 resamples to that frame rate during the same pass - no
+    second decode and no interpolation model."""
     import torch  # type: ignore
     import numpy as np  # type: ignore
 
-    proc = subprocess.run(
-        [ffmpeg, "-i", path, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
-        capture_output=True,
-    )
+    proc = subprocess.run(_decode_cmd(ffmpeg, path, force_rate), capture_output=True)
     if proc.returncode != 0 or not proc.stdout:
         tail = proc.stderr.decode("utf-8", "replace")[-2000:]
         raise RuntimeError(f"[MpiLoadVideo] ffmpeg decode failed:\n{tail}")
@@ -193,6 +202,18 @@ class MpiLoadVideo:
                     },
                 ),
             },
+            "optional": {
+                "force_rate": (
+                    "FLOAT",
+                    {
+                        "default": 0.0,
+                        "min": 0.0,
+                        "max": 240.0,
+                        "step": 1.0,
+                        "tooltip": "Resample the video to this frame rate while decoding. 0 = keep the source rate. ffmpeg drops/duplicates frames inside the pass that already happens, so it costs nothing and needs no interpolation model. fps, frame_count and duration are all reported at the forced rate.",
+                    },
+                ),
+            },
         }
 
     RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "INT", "FLOAT", "INT", "INT", "BOOLEAN")
@@ -215,7 +236,9 @@ class MpiLoadVideo:
         "(True when the file contains an audio track). Input is named 'string' "
         "to match MpiString / MpiAnyChecker. Empty/missing path blocks downstream "
         "unless block_if_empty is off, in which case it outputs a blank 1x1 image "
-        "+ silent audio so the graph continues."
+        "+ silent audio so the graph continues. force_rate resamples the video to "
+        "that frame rate during the same decode pass (0 = keep the source rate); "
+        "fps, frame_count and duration are then all reported at the forced rate."
     )
     FUNCTION = "load"
 
@@ -230,7 +253,7 @@ class MpiLoadVideo:
         audio = {"waveform": torch.zeros((1, 1, 1), dtype=torch.float32), "sample_rate": 44100}
         return (image, audio, 0.0, 0, 0.0, 0, 0, False)
 
-    def load(self, string, block_if_empty=True):
+    def load(self, string, block_if_empty=True, force_rate=0.0):
         path = resolve_video_path((string or "").strip())
         ffmpeg = find_ffmpeg()
         if not path or not os.path.isfile(path) or not ffmpeg:
@@ -240,7 +263,10 @@ class MpiLoadVideo:
         if w == 0 or h == 0:
             return self._empty(block_if_empty)
 
-        images, n = _decode_frames(ffmpeg, path, w, h)
+        rate = float(force_rate or 0.0)
+        images, n = _decode_frames(ffmpeg, path, w, h, rate)
+        if rate > 0:
+            fps = rate  # report the rate the frames actually came out at
         audio = _load_audio(ffmpeg, path)
         duration = n / fps if fps else 0.0
         return (images, audio, fps, n, duration, w, h, audio is not None)
