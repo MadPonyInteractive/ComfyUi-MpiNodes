@@ -117,11 +117,18 @@ def _probe_video_meta(ffmpeg, path):
 
 
 def _decode_cmd(ffmpeg, path, force_rate=0.0):
-    """The rawvideo decode command, with force_rate as an OUTPUT option so
-    ffmpeg drops/duplicates frames inside the single pass we already make."""
+    """The rawvideo decode command, with force_rate resampling inside the single
+    pass we already make.
+
+    The `fps` FILTER, not the output `-r`. Both drop/duplicate, but -r converts to
+    CFR by rounding each frame's timestamp and overshoots: measured on a 49-frame
+    30 fps clip (1.633 s), `-r 24` returns 41 frames, which declared as 24 fps plays
+    1.708 s -- 4.6% slow, which is the exact speed mismatch force_rate exists to
+    remove. `-vf fps=24` returns 39 (1.625 s), duration preserved.
+    """
     cmd = [ffmpeg, "-i", path]
     if force_rate and force_rate > 0:
-        cmd += ["-r", f"{force_rate:g}"]
+        cmd += ["-vf", f"fps={force_rate:g}"]
     return cmd + ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
 
 
