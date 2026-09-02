@@ -536,6 +536,12 @@ def place_mask(mask, frames, start=0, end=-1):
         )
     if start < 0:
         raise ValueError(f"`mask_start` cannot be negative; got {start}.")
+    if mask.shape[0] == 1 and start == 0 and frames > 1:
+        # One mask for a whole clip means the same region on every frame - the only
+        # other reading is "inpaint frame 0 and keep the other 123", which no caller
+        # wants and which nothing downstream can notice. Anything placed at a
+        # non-zero start IS a deliberate range, so it is left alone.
+        mask = mask.expand(frames, -1, -1)
     if start + mask.shape[0] > frames:
         raise ValueError(
             f"A {mask.shape[0]}-frame mask placed at frame {start} runs past the "
@@ -900,5 +906,13 @@ if __name__ == "__main__":
     # answer here; the node raises rather than picking a near-miss.
     assert plan_context(30, 90) == (0, 0, 0)
     assert 39 not in {tail_span(30, s) for s in range(1, 31)}
+
+    # place_mask: one mask covers the whole clip rather than frame 0 alone
+    import torch
+    _one = torch.ones((1, 8, 8))
+    assert place_mask(_one, 22).shape == (22, 8, 8)
+    assert place_mask(_one, 22)[21].all()
+    # but a deliberate placement stays a placement
+    assert not place_mask(_one, 22, start=5)[6].any()
 
     print("h3.py self-check passed")

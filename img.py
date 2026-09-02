@@ -727,17 +727,25 @@ class MpiMaskSquareBbox:
     DESCRIPTION = (
         "Square bounding box around a mask, centered on the mask and clamped "
         "(shrunk if needed) to stay fully inside the image. Outputs a filled "
-        "square MASK plus its x, y, and side length."
+        "square MASK plus its x, y, and side length. On a batch (a video mask) "
+        "the box is the union of every frame and the square is returned for every "
+        "frame, so the region holds still for the whole clip instead of crawling."
     )
     FUNCTION = "compute"
 
     def compute(self, mask, padding):
-        # MASK is (B, H, W); operate on the first item, keep the batch dim out.
-        single = mask[0] if mask.dim() == 3 else mask
-        H, W = single.shape
+        # MASK is (B, H, W). The box comes from the UNION of every frame, and the
+        # filled result is returned for EVERY frame. Taking frame 0 alone returned
+        # a 1-frame mask, which a video consumer cannot tell from "mask frame 0 and
+        # keep the other 123" - MpiH3EncodeAV zero-fills the rest and inpaints one
+        # frame with no error at all. One box, held for the whole clip, also keeps
+        # the composite seam still: a per-frame box crawls, and a crawling seam is
+        # far more visible in motion than a fixed one.
+        batch = mask if mask.dim() == 3 else mask.unsqueeze(0)
+        B, H, W = batch.shape
 
-        box = square_bbox_from_mask(single, padding)
-        out = torch.zeros((1, H, W), dtype=mask.dtype, device=mask.device)
+        box = square_bbox_from_mask(batch.amax(0), padding)
+        out = torch.zeros((B, H, W), dtype=mask.dtype, device=mask.device)
         if box is None:
             return (out, 0, 0, 0)
 
@@ -950,6 +958,17 @@ if __name__ == "__main__":
     assert y == 0 and 0 <= x <= 150    # clamped fully inside
 
     assert square_bbox_from_mask(torch.zeros((10, 10))) is None
+
+    # MpiMaskSquareBbox: a video mask in -> the same number of frames out, one box
+    vid = torch.zeros((7, 400, 400))
+    vid[0, 100:150, 50:100] = 1.0    # subject starts left
+    vid[6, 100:150, 300:350] = 1.0   # and ends right
+    sq, bx, by, bs = MpiMaskSquareBbox().compute(vid, 0)
+    assert sq.shape == (7, 400, 400), sq.shape          # every frame, not just one
+    assert (sq[0] == sq[6]).all()                       # and the box never moves
+    assert (bx, bs) == (50, 300), (bx, bs)              # union spans both extremes
+    assert sq[3, 100, 200] == 1.0                       # a frame with no mask of its own
+    assert sq[0, 120, 320] == 1.0                       # frame 0 still covers where it ENDS up
     print("square_bbox ok")
 
     # crop_offset anchoring
