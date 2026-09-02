@@ -443,6 +443,68 @@ def plan_audio_window(start, end, frames, audio_steps):
     return f0 * AUDIO_LATENT_FPS // FPS_I, a1, f0, f1
 
 
+_RANGE_RE = __import__("re").compile(r"^(\d+)\s*(?:-\s*(-?\d+))?$")
+
+
+def parse_audio_ranges(spec, frames, audio_steps):
+    """`"0-10, 40-50, 90-100"` -> merged, snapped audio-step ranges.
+
+    The capability LanPaint's interactive editor has and no core node exposes:
+    several DISJOINT stretches of a clip regenerated in one pass. It is spelled
+    as text rather than as the 1-D [F] MASK LanPaint takes, because nothing
+    emits that shape - not core, not a segmenter, and certainly not a host app
+    driving the graph over HTTP.
+
+    Each range is start-inclusive and end-EXCLUSIVE, matching audio_start /
+    audio_end on the same node, so "0-10" is the first ten frames. A bare number
+    is one frame. An end of -1 runs to the end of the clip.
+
+    Ranges are snapped outwards individually and then MERGED where they overlap
+    or touch. Two ranges three frames apart can collide once both are snapped,
+    and splicing them separately would crossfade the second against audio the
+    first had already written - a fade into material that is not the original.
+    """
+    out = []
+    for part in spec.replace(";", ",").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        m = _RANGE_RE.match(part)
+        if not m:
+            raise ValueError(
+                f"`{part}` is not a frame range. Write them as `start-end` with "
+                "the end exclusive, separated by commas - `0-10, 40-50`. A bare "
+                "number is a single frame, and an end of -1 runs to the clip end."
+            )
+        start = int(m.group(1))
+        end = start + 1 if m.group(2) is None else int(m.group(2))
+        a0, a1, _f0, _f1 = plan_audio_window(start, end, frames, audio_steps)
+        if a1 > a0:
+            out.append((a0, a1))
+
+    out.sort()
+    merged = []
+    for a0, a1 in out:
+        if merged and a0 <= merged[-1][1]:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], a1))
+        else:
+            merged.append((a0, a1))
+    return merged
+
+
+def audio_windows(spec, start, end, frames, audio_steps):
+    """The audio ranges to regenerate: the range spec when given, else start/end.
+
+    One resolver so the encode and the decode cannot disagree about which of the
+    two inputs is in charge - a disagreement that would mask one stretch and
+    splice a different one, with every tensor still valid.
+    """
+    if spec and spec.strip():
+        return parse_audio_ranges(spec, frames, audio_steps)
+    a0, a1, _f0, _f1 = plan_audio_window(start, end, frames, audio_steps)
+    return [(a0, a1)] if a1 > a0 else []
+
+
 def audio_at_vae_rate(audio, audio_vae):
     """The clip's waveform at the audio VAE's own rate, as [B, C, samples].
 
@@ -742,6 +804,7 @@ class MpiH3EncodeAV:
                 "mask_end": ("INT", {"default": -1, "min": -1, "max": 100000, "tooltip": "Clip frame to stop masking at, exclusive. -1 uses all of the supplied mask, so the default range is whatever the mask covers."}),
                 "audio_start": ("INT", {"default": 0, "min": 0, "max": 100000, "tooltip": "First clip frame of the AUDIO window to regenerate, at 24 fps. Snapped DOWN to a multiple of 3 - audio's 40 Hz clock only lands on a whole step every 3 frames, and an off-grid edge drifts the sound against the picture with no error. Only used when audio_end is not 0."}),
                 "audio_end": ("INT", {"default": 0, "min": -1, "max": 100000, "tooltip": "Clip frame to stop regenerating audio at, exclusive; snapped UP to a multiple of 3. 0 - the default - keeps the whole soundtrack, which is the plain inpaint. -1 runs to the end of the clip. Unlike the picture mask this selects a TIME range, not a source: everything sounding in the window is regenerated together, so it gives 'redo this window to match the video', never 'add a sound under the dialogue' - for that, decode in mix mode."}),
+                "audio_ranges": ("STRING", {"default": "", "tooltip": "Several disjoint stretches in one pass: `0-10, 40-50, 90-100`. Start inclusive, end EXCLUSIVE, so `0-10` is the first ten frames; a bare number is one frame and an end of -1 runs to the clip end. Overrides audio_start/audio_end when it is not empty, and MUST be typed identically on MpiH3DecodeAV. Leave the whole soundtrack unmasked SOMEWHERE - the model matches the room, the mic and the ambience by listening to what you did not mask, so masking all of it is the one case where it has nothing to match and comes back with its own score."}),
             },
         }
 
@@ -768,7 +831,7 @@ class MpiH3EncodeAV:
     FUNCTION = "doit"
 
     def doit(self, vae, images, audio_vae, audio, mask=None, mask_start=0, mask_end=-1,
-             audio_start=0, audio_end=0):
+             audio_start=0, audio_end=0, audio_ranges=""):
         # Imported here, not at module scope, so the pack still loads on a
         # ComfyUI without H3 -- same reason as MpiH3References.
         import torch
@@ -782,9 +845,9 @@ class MpiH3EncodeAV:
         audio_z = audio_vae.encode(waveform[:1].movedim(1, -1))
 
         out = {"samples": comfy.nested_tensor.NestedTensor((video_z, audio_z))}
-        a0, a1, f0, f1 = plan_audio_window(
-            audio_start, audio_end, images.shape[0], audio_z.shape[-1])
-        if mask is not None or a1 > a0:
+        windows = audio_windows(
+            audio_ranges, audio_start, audio_end, images.shape[0], audio_z.shape[-1])
+        if mask is not None or windows:
             # Only the inpainting path needs this: the mask and the composite in
             # MpiH3DecodeAV are indexed in PIXEL frames, so the clip has to survive
             # the round trip frame-for-frame. Off the grid the VAE packs what it can
@@ -811,20 +874,29 @@ class MpiH3EncodeAV:
                 else torch.zeros((1, 1) + tuple(video_z.shape[2:]), dtype=torch.float32)
             )
             mask_a = torch.zeros((1, 1) + tuple(audio_z.shape[2:]), dtype=torch.float32)
-            mask_a[..., a0:a1] = 1.0
+            for a0, a1 in windows:
+                mask_a[..., a0:a1] = 1.0
             out["noise_mask"] = comfy.nested_tensor.NestedTensor((mask_v, mask_a))
 
-        parts = []
-        parts.append(
+        total = audio_z.shape[-1]
+        parts = [
             f"picture: mask over frames {mask_start}.."
             f"{mask_end if mask_end >= 0 else images.shape[0]}"
             if mask is not None else "picture: no mask"
-        )
-        parts.append(
-            f"audio: regenerating frames {f0}..{f1} "
-            f"(steps {a0}..{a1} of {audio_z.shape[-1]})"
-            if a1 > a0 else "audio: keeping all"
-        )
+        ]
+        if not windows:
+            parts.append("audio: keeping all")
+        else:
+            spans = ", ".join(f"{a0}..{a1}" for a0, a1 in windows)
+            kept = total - sum(a1 - a0 for a0, a1 in windows)
+            parts.append(f"audio: regenerating steps {spans} of {total}")
+            # The context IS the feature: with nothing left unmasked the model has
+            # no room, mic or ambience to match and writes its own. Said here
+            # rather than raised, because a whole-clip regeneration is legitimate
+            # - it is just not foley.
+            parts.append(
+                f"{kept} steps kept as context" if kept
+                else "NO context kept - the model has nothing to match")
         return (out, "; ".join(parts))
 
 
@@ -850,6 +922,7 @@ class MpiH3DecodeAV:
                 "audio_mode": (["replace", "mix"], {"default": "replace", "tooltip": "`replace` swaps the window for what the model generated - right for a whole re-take of that moment. `mix` sums it UNDER the original instead, which is the only way to layer a new sound onto a track that already has dialogue: an audio mask selects a time range, not a source, so the model regenerates everything sounding in the window and replacing it throws the original performance away."}),
                 "audio_crossfade": ("INT", {"default": 50, "min": 0, "max": 2000, "tooltip": "Length of the crossfade at each end of the window, in milliseconds. A hard splice clicks, and a click is the one artefact an audio edit cannot hide. The ramp sits INSIDE the window, so the kept soundtrack is never touched. This is the audio half of LanPaint's pair - the counterpart to feather."}),
                 "audio_gain": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05, "tooltip": "Level applied to the generated window before it lands. In `replace` it is the trim that stops a take coming back hotter than the track it sits in. In `mix` it is how far UNDER the original the new layer sits - at 1.0 the model's own re-invented score and ambience are summed at full strength on top of the real ones, so start around 0.3 and come up until the new sound reads."}),
+                "audio_ranges": ("STRING", {"default": "", "tooltip": "Must match the encode's audio_ranges EXACTLY. Each range is spliced separately, with its own crossfade at both ends."}),
             },
         }
 
@@ -876,7 +949,7 @@ class MpiH3DecodeAV:
 
     def doit(self, samples, vae, images, mask=None, mask_start=0, mask_end=-1, feather=11,
              mask_mode="per-frame", audio_vae=None, audio=None, audio_start=0, audio_end=0,
-             audio_mode="replace", audio_crossfade=50, audio_gain=1.0):
+             audio_mode="replace", audio_crossfade=50, audio_gain=1.0, audio_ranges=""):
         import torch
 
         z_video, z_audio = _unpack_av(samples, "samples")
@@ -901,7 +974,7 @@ class MpiH3DecodeAV:
 
         out_audio = self.compose_audio(
             z_audio, audio_vae, audio, images.shape[0], audio_start, audio_end,
-            audio_mode, audio_crossfade, audio_gain)
+            audio_mode, audio_crossfade, audio_gain, audio_ranges)
 
         if mask is None:
             return (out, out_audio)
@@ -940,7 +1013,7 @@ class MpiH3DecodeAV:
 
     @staticmethod
     def compose_audio(z_audio, audio_vae, audio, frames, start, end, mode, crossfade_ms,
-                      gain=1.0):
+                      gain=1.0, ranges=""):
         """The soundtrack this node hands on: passed through, or spliced.
 
         Deliberately NOT core's `vae_decode_audio`: that divides the decode by its
@@ -955,7 +1028,10 @@ class MpiH3DecodeAV:
             # Something has to come out of an AUDIO socket; this is the same
             # 1-sample sentinel the loaders use for "nothing here".
             return {"waveform": torch.zeros((1, 2, 1)), "sample_rate": 44100}
-        if audio_vae is None or end == 0:
+        if audio_vae is None:
+            return audio
+        windows = audio_windows(ranges, start, end, frames, z_audio.shape[-1])
+        if not windows:
             return audio
 
         wave, rate = audio_at_vae_rate(audio, audio_vae)
@@ -966,18 +1042,22 @@ class MpiH3DecodeAV:
 
         steps = z_audio.shape[-1]
         per_step = gen.shape[-1] // max(1, steps)
-        a0, a1, _f0, _f1 = plan_audio_window(start, end, frames, steps)
-        if wave.shape[-1] < a1 * per_step:
+        end_sample = windows[-1][1] * per_step
+        if wave.shape[-1] < end_sample:
             raise ValueError(
-                f"The soundtrack is {wave.shape[-1]} samples but the audio window "
-                f"ends at {a1 * per_step}. It is shorter than the clip, so the "
-                "window would be silently truncated - give this node the same "
+                f"The soundtrack is {wave.shape[-1]} samples but the last audio "
+                f"window ends at {end_sample}. It is shorter than the clip, so "
+                "the window would be silently truncated - give this node the same "
                 "audio the encode was given."
             )
-        spliced = splice_audio(
-            wave.to(gen), gen, a0 * per_step, a1 * per_step,
-            int(rate * crossfade_ms / 1000), mode, gain)
-        return {"waveform": spliced, "sample_rate": rate}
+        # Each range is spliced on its own, with its own crossfade at both ends.
+        # `audio_windows` returns them merged and sorted, so no two can overlap
+        # and no fade lands on audio a previous range had already written.
+        out = wave.to(gen)
+        xf = int(rate * crossfade_ms / 1000)
+        for a0, a1 in windows:
+            out = splice_audio(out, gen, a0 * per_step, a1 * per_step, xf, mode, gain)
+        return {"waveform": out, "sample_rate": rate}
 
 
 def _unpack_av(latent, name: str):
@@ -1260,6 +1340,34 @@ if __name__ == "__main__":
     # A crossfade longer than the window is clamped, not an error.
     assert splice_audio(_orig, _gen, 400, 410, 10_000).shape == _orig.shape
 
+    # --- audio_ranges: the disjoint stretches LanPaint's editor can express ---
+    # 121 steps = a 73-frame clip. 24 frames = 40 steps, so 0-10 -> 0..20 once
+    # the exclusive end snaps up to 12 frames.
+    assert parse_audio_ranges("0-12, 24-48", 73, 121) == [(0, 20), (40, 80)]
+    # Whitespace, semicolons and a bare frame number all parse.
+    assert parse_audio_ranges(" 0-12 ;24-48 ", 73, 121) == [(0, 20), (40, 80)]
+    assert parse_audio_ranges("30", 73, 121) == [(50, 55)]   # frames 30..33
+    # -1 as an end runs to the clip end, exactly as audio_end -1 does.
+    assert parse_audio_ranges("60--1", 73, 121) == [(100, 121)]
+    # Ranges that COLLIDE once snapped are merged, not spliced separately - a
+    # second fade would ramp into audio the first range had already written.
+    assert parse_audio_ranges("0-12, 10-24", 73, 121) == [(0, 40)]
+    assert parse_audio_ranges("24-48, 0-12", 73, 121) == [(0, 20), (40, 80)]  # sorted
+    # Touching ranges merge too: 0..20 and 20..40 share an edge.
+    assert parse_audio_ranges("0-12, 12-24", 73, 121) == [(0, 40)]
+    assert parse_audio_ranges("", 73, 121) == []
+    try:
+        parse_audio_ranges("0 to 12", 73, 121)
+    except ValueError as _exc:
+        assert "frame range" in str(_exc), _exc
+    else:
+        raise AssertionError("a malformed range must raise")
+
+    # The resolver the two nodes share: a spec wins, otherwise start/end.
+    assert audio_windows("0-12", 0, 0, 73, 121) == [(0, 20)]
+    assert audio_windows("", 24, 48, 73, 121) == [(40, 80)]
+    assert audio_windows("   ", 0, 0, 73, 121) == []
+
     # MpiH3DecodeAV.compose_audio end to end, on a stand-in VAE -- the widgets
     # and the sample arithmetic are the half that a graph cannot check for you.
     class _AVae:
@@ -1293,6 +1401,18 @@ if __name__ == "__main__":
         pass
     else:
         raise AssertionError("a short soundtrack must raise")
+
+    # Two disjoint ranges in ONE pass: both windows replaced, the gap between
+    # them untouched. The gap is the point - it is the context the model heard.
+    _outw = _compose(_z, _AVae(), _track, 73, 0, 0, "replace", 0, 1.0, "0-12, 24-48")
+    _outw = _outw["waveform"]
+    assert torch.allclose(_outw[..., 0:16000], torch.tensor(-0.75))     # steps 0..20
+    assert torch.equal(_outw[..., 16000:32000], _track["waveform"][..., 16000:32000])
+    assert torch.allclose(_outw[..., 32000:64000], torch.tensor(-0.75))  # steps 40..80
+    assert torch.equal(_outw[..., 64000:], _track["waveform"][..., 64000:])
+    # A range spec overrides audio_start/audio_end rather than adding to them.
+    _both = _compose(_z, _AVae(), _track, 73, 60, 72, "replace", 0, 1.0, "0-12")
+    assert torch.equal(_both["waveform"][..., 32000:], _track["waveform"][..., 32000:])
     print("audio window + splice ok")
 
     print("h3.py self-check passed")
