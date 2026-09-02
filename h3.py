@@ -459,7 +459,7 @@ def audio_at_vae_rate(audio, audio_vae):
     return waveform, vae_rate
 
 
-def splice_audio(original, generated, s0, s1, crossfade, mode="replace"):
+def splice_audio(original, generated, s0, s1, crossfade, mode="replace", gain=1.0):
     """Put a regenerated sample range back into the original waveform.
 
     Both tensors are [B, C, samples] at the SAME rate; `s0`/`s1` are sample
@@ -474,6 +474,20 @@ def splice_audio(original, generated, s0, s1, crossfade, mode="replace"):
     track: an audio mask selects a time range, not a source, so H3 regenerates
     every source inside it -- dialogue, room tone and footsteps together. Replace
     is right for a whole re-take and wrong for adding a servo under a line.
+
+    `gain` scales the generated window before it lands, and it is not a nicety.
+    The model's take comes back at whatever level it decided on, which is rarely
+    the level of the track it has to sit in: under "replace" this is the trim
+    that stops the window jumping out, and under "mix" it is how far UNDER the
+    original the layer sits. Summing at full strength doubles the ambience the
+    model re-invented alongside the sound that was actually wanted.
+
+    The fade curve follows the mode, because they are not the same operation.
+    "replace" crosses between two takes of one moment, which do not correlate, so
+    the pair is equal power and holds level through the crossover. "mix" fades a
+    LAYER in over an original that keeps playing underneath, so it is linear --
+    equal power there would start the layer at 71% of its level on the very first
+    sample, which is a click of its own.
     """
     import torch
 
@@ -483,16 +497,17 @@ def splice_audio(original, generated, s0, s1, crossfade, mode="replace"):
     if s1 <= s0:
         return out
 
-    gen = generated[..., s0:s1].to(out)
+    gen = generated[..., s0:s1].to(out) * gain
     xf = max(0, min(crossfade, (s1 - s0) // 2))
     if xf:
         t = torch.linspace(0, 1, xf + 2, dtype=gen.dtype, device=gen.device)[1:-1]
         ramp = torch.ones(s1 - s0, dtype=gen.dtype, device=gen.device)
         ramp[:xf] = t
         ramp[-xf:] = t.flip(0)
-        gen = gen * ramp.sqrt()
-        if mode == "replace":
-            gen = gen + out[..., s0:s1] * (1.0 - ramp).sqrt()
+        if mode == "mix":
+            gen = gen * ramp
+        else:
+            gen = gen * ramp.sqrt() + out[..., s0:s1] * (1.0 - ramp).sqrt()
     if mode == "mix":
         out[..., s0:s1] = out[..., s0:s1] + gen
         return out.clamp_(-1.0, 1.0)
@@ -834,6 +849,7 @@ class MpiH3DecodeAV:
                 "audio_end": ("INT", {"default": 0, "min": -1, "max": 100000, "tooltip": "Must match the encode's audio_end. 0 passes the original soundtrack straight through."}),
                 "audio_mode": (["replace", "mix"], {"default": "replace", "tooltip": "`replace` swaps the window for what the model generated - right for a whole re-take of that moment. `mix` sums it UNDER the original instead, which is the only way to layer a new sound onto a track that already has dialogue: an audio mask selects a time range, not a source, so the model regenerates everything sounding in the window and replacing it throws the original performance away."}),
                 "audio_crossfade": ("INT", {"default": 50, "min": 0, "max": 2000, "tooltip": "Length of the crossfade at each end of the window, in milliseconds. A hard splice clicks, and a click is the one artefact an audio edit cannot hide. The ramp sits INSIDE the window, so the kept soundtrack is never touched. This is the audio half of LanPaint's pair - the counterpart to feather."}),
+                "audio_gain": ("FLOAT", {"default": 1.0, "min": 0.0, "max": 4.0, "step": 0.05, "tooltip": "Level applied to the generated window before it lands. In `replace` it is the trim that stops a take coming back hotter than the track it sits in. In `mix` it is how far UNDER the original the new layer sits - at 1.0 the model's own re-invented score and ambience are summed at full strength on top of the real ones, so start around 0.3 and come up until the new sound reads."}),
             },
         }
 
@@ -860,7 +876,7 @@ class MpiH3DecodeAV:
 
     def doit(self, samples, vae, images, mask=None, mask_start=0, mask_end=-1, feather=11,
              mask_mode="per-frame", audio_vae=None, audio=None, audio_start=0, audio_end=0,
-             audio_mode="replace", audio_crossfade=50):
+             audio_mode="replace", audio_crossfade=50, audio_gain=1.0):
         import torch
 
         z_video, z_audio = _unpack_av(samples, "samples")
@@ -885,7 +901,7 @@ class MpiH3DecodeAV:
 
         out_audio = self.compose_audio(
             z_audio, audio_vae, audio, images.shape[0], audio_start, audio_end,
-            audio_mode, audio_crossfade)
+            audio_mode, audio_crossfade, audio_gain)
 
         if mask is None:
             return (out, out_audio)
@@ -923,7 +939,8 @@ class MpiH3DecodeAV:
         return (images.to(out) * (1.0 - m) + out * m, out_audio)
 
     @staticmethod
-    def compose_audio(z_audio, audio_vae, audio, frames, start, end, mode, crossfade_ms):
+    def compose_audio(z_audio, audio_vae, audio, frames, start, end, mode, crossfade_ms,
+                      gain=1.0):
         """The soundtrack this node hands on: passed through, or spliced.
 
         Deliberately NOT core's `vae_decode_audio`: that divides the decode by its
@@ -959,7 +976,7 @@ class MpiH3DecodeAV:
             )
         spliced = splice_audio(
             wave.to(gen), gen, a0 * per_step, a1 * per_step,
-            int(rate * crossfade_ms / 1000), mode)
+            int(rate * crossfade_ms / 1000), mode, gain)
         return {"waveform": spliced, "sample_rate": rate}
 
 
@@ -1223,6 +1240,23 @@ if __name__ == "__main__":
     _sp = splice_audio(_orig, _gen, 400, 600, 0, mode="mix")
     assert torch.allclose(_sp[..., 500], _orig[..., 500] + _gen[..., 500])
     assert splice_audio(_orig, torch.ones_like(_gen), 0, 1000, 0, mode="mix").max() <= 1.0
+
+    # gain scales the generated side only, in BOTH modes - the kept track is the
+    # reference level and must not move with it.
+    _sp = splice_audio(_orig, _gen, 400, 600, 0, gain=0.5)
+    assert torch.allclose(_sp[..., 500], _gen[..., 500] * 0.5)
+    assert torch.equal(_sp[..., :400], _orig[..., :400])
+    _sp = splice_audio(_orig, _gen, 400, 600, 0, mode="mix", gain=0.25)
+    assert torch.allclose(_sp[..., 500], _orig[..., 500] + _gen[..., 500] * 0.25)
+    # gain 0 in mix is a true no-op; in replace it silences the window.
+    assert torch.equal(splice_audio(_orig, _gen, 400, 600, 0, mode="mix", gain=0.0), _orig)
+    assert splice_audio(_orig, _gen, 400, 600, 0, gain=0.0)[..., 500].abs().max() == 0
+
+    # mix fades LINEARLY, not equal power: a layer arriving at 71% on its first
+    # sample is a click, which is the artefact the crossfade exists to remove.
+    _lin = splice_audio(torch.zeros((1, 2, 1000)), torch.ones((1, 2, 1000)),
+                        400, 600, 100, mode="mix")
+    assert torch.allclose(_lin[..., 450], torch.tensor(0.5), atol=0.02), _lin[..., 450]
     # A crossfade longer than the window is clamped, not an error.
     assert splice_audio(_orig, _gen, 400, 410, 10_000).shape == _orig.shape
 
