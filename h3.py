@@ -673,7 +673,7 @@ class MpiH3DecodeAV:
                 "mask": ("MASK", {"tooltip": "The SAME mask the encode was given (1 = regenerate, 0 = keep). Unconnected returns the decode whole, with no compositing."}),
                 "mask_start": ("INT", {"default": 0, "min": 0, "max": 100000, "tooltip": "Must match the encode's mask_start."}),
                 "mask_end": ("INT", {"default": -1, "min": -1, "max": 100000, "tooltip": "Must match the encode's mask_end."}),
-                "feather": ("INT", {"default": 11, "min": 0, "max": 101, "step": 2, "tooltip": "Softens the mask edge, in pixels, so the seam does not show (0 = hard cut). Dilate then Gaussian, matching the LanPaint blend_overlap: the ramp sits OUTSIDE the mask you drew, so the inpainted content keeps full strength at its own edge."}),
+                "feather": ("INT", {"default": 11, "min": 1, "max": 101, "step": 2, "tooltip": "Softens the mask edge, in pixels, so the seam does not show (1 = hard cut). Odd only: the kernel is centred on the pixel, and min 0 with step 2 put every reachable value on the EVEN grid, so the arrows could never return to the default 11. Dilate then Gaussian, matching the LanPaint blend_overlap: the ramp sits OUTSIDE the mask you drew, so the inpainted content keeps full strength at its own edge."}),
             },
         }
 
