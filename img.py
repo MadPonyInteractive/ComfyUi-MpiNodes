@@ -761,7 +761,10 @@ def _box_blur(img, radius):
     k = 2 * radius + 1
     x = img.permute(2, 0, 1).unsqueeze(0)               # 1,C,H,W
     x = torch.nn.functional.pad(x, (radius,) * 4, mode="reflect")
-    x = torch.nn.functional.avg_pool2d(x, k, stride=1)
+    # Separable: 2k per pixel rather than k*k. The pad is already on both axes,
+    # so pooling one axis at a time lands on exactly the same window.
+    x = torch.nn.functional.avg_pool2d(x, (k, 1), stride=1)
+    x = torch.nn.functional.avg_pool2d(x, (1, k), stride=1)
     return x.squeeze(0).permute(1, 2, 0)
 
 
@@ -782,7 +785,11 @@ def _ring_of(mask, ring_px):
         return torch.zeros_like(mask, dtype=torch.bool)
     k = 2 * ring_px + 1
     x = mask.view(1, 1, *mask.shape)
-    grown = torch.nn.functional.max_pool2d(x, k, stride=1, padding=ring_px)
+    # Max is separable, and this dilate is the whole cost of the node: at the
+    # default ring_px 31 the k*k form is 3969 comparisons per pixel on every
+    # frame, which on a clip reads as a hung node rather than a slow one.
+    grown = torch.nn.functional.max_pool2d(x, (k, 1), stride=1, padding=(ring_px, 0))
+    grown = torch.nn.functional.max_pool2d(grown, (1, k), stride=1, padding=(0, ring_px))
     return (grown.view(*mask.shape) > 0.5) & (mask <= 0.5)
 
 
@@ -970,6 +977,24 @@ if __name__ == "__main__":
     assert sq[3, 100, 200] == 1.0                       # a frame with no mask of its own
     assert sq[0, 120, 320] == 1.0                       # frame 0 still covers where it ENDS up
     print("square_bbox ok")
+
+    # both separable rewrites must match the k*k forms they replaced
+    _f = torch.nn.functional
+    for _r in (1, 5, 31):
+        _k = 2 * _r + 1
+        _msk = (torch.rand(60, 70) > 0.9).float()
+        _x = _msk.view(1, 1, 60, 70)
+        _sq = _f.max_pool2d(_x, _k, stride=1, padding=_r)
+        _sp = _f.max_pool2d(_x, (_k, 1), stride=1, padding=(_r, 0))
+        _sp = _f.max_pool2d(_sp, (1, _k), stride=1, padding=(0, _r))
+        assert torch.equal(_sq, _sp), ("ring", _r)
+
+        _im = torch.rand(60, 70, 3)
+        _p = _f.pad(_im.permute(2, 0, 1).unsqueeze(0), (_r,) * 4, mode="reflect")
+        _sq = _f.avg_pool2d(_p, _k, stride=1)
+        _sp = _f.avg_pool2d(_f.avg_pool2d(_p, (_k, 1), stride=1), (1, _k), stride=1)
+        assert torch.allclose(_sq, _sp, atol=1e-6), ("blur", _r)
+    print("separable pools ok")
 
     # crop_offset anchoring
     assert crop_offset(100, 40, "left", "x") == 0
