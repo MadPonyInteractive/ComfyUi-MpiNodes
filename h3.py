@@ -581,6 +581,43 @@ def pack_video_mask(mask, video_shape, start=0, end=-1):
     return out
 
 
+def sampled_mask_frames(mask, video_shape, frames, size, start=0, end=-1, patch=2):
+    """The mask the MODEL actually sampled, brought back to pixel resolution.
+
+    `pack_video_mask` quantises to the latent grid and unions the frames each
+    latent step packs, and the DiT then pools again with amax over its own patch
+    (`_pool_masks_to_token_grid` in comfy/model_base.py). So the region that was
+    PAINTED is blockier and fatter than the per-frame mask -- on a 1536x640 clip
+    the model sees 48x20 cells, each smeared over the ~4 frames its step carries.
+    Compositing that repaint through the thin per-frame mask keeps a slice of it
+    and puts the seam INSIDE the region the model worked to, which is exactly
+    where a seam shows. This walks the same reductions and expands them back, so
+    the kept region matches the painted one.
+    """
+    import torch
+
+    t = video_shape[2]
+    packed = pack_video_mask(mask, video_shape, start, end)[0, 0]          # (t, h, w)
+
+    if patch > 1:  # the DiT's own amax over its 2x2 patch, then back to latent cells
+        lh, lw = packed.shape[-2:]
+        p = torch.nn.functional.pad(
+            packed.unsqueeze(1), (0, -lw % patch, 0, -lh % patch), mode="replicate")
+        p = torch.nn.functional.max_pool2d(p, patch, stride=patch)
+        p = p.repeat_interleave(patch, -2).repeat_interleave(patch, -1)
+        packed = p[:, 0, :lh, :lw]
+
+    spans = frame_spans(t)
+    assert spans[-1][1] == frames, (spans[-1][1], frames)
+    out = torch.zeros((frames,) + tuple(packed.shape[-2:]), dtype=torch.float32)
+    for k, (f0, f1) in enumerate(spans):
+        out[f0:f1] = packed[k]
+
+    # nearest, not bilinear: the blockiness IS the mask the model was given
+    return torch.nn.functional.interpolate(
+        out.unsqueeze(1), size=size, mode="nearest")[:, 0]
+
+
 class MpiH3EncodeAV:
     @classmethod
     def INPUT_TYPES(cls):
@@ -674,6 +711,7 @@ class MpiH3DecodeAV:
                 "mask_start": ("INT", {"default": 0, "min": 0, "max": 100000, "tooltip": "Must match the encode's mask_start."}),
                 "mask_end": ("INT", {"default": -1, "min": -1, "max": 100000, "tooltip": "Must match the encode's mask_end."}),
                 "feather": ("INT", {"default": 11, "min": 1, "max": 101, "step": 2, "tooltip": "Softens the mask edge, in pixels, so the seam does not show (1 = hard cut). Odd only: the kernel is centred on the pixel, and min 0 with step 2 put every reachable value on the EVEN grid, so the arrows could never return to the default 11. Dilate then Gaussian, matching the LanPaint blend_overlap: the ramp sits OUTSIDE the mask you drew, so the inpainted content keeps full strength at its own edge."}),
+                "mask_mode": (["per-frame", "as sampled"], {"default": "per-frame", "tooltip": "Which mask to composite through. `per-frame` keeps the exact mask you drew - tightest result, but the model painted a blockier, temporally wider region than that, so the seam lands inside the repaint. `as sampled` rebuilds the mask the model was actually given (latent grid, union of the frames each step packs, the DiT's own patch pooling) so the kept region matches the painted one; the boundary is blockier but it falls where the model stopped working, and feather can come right down."}),
             },
         }
 
@@ -691,11 +729,13 @@ class MpiH3DecodeAV:
         "is also why there is no audio_vae input, and no audio cross-fade either: "
         "nothing is spliced into the soundtrack, so there is no audio seam to hide. "
         "`feather` is the video half of LanPaint's pair, dilate-then-Gaussian like "
-        "its blend_overlap."
+        "its blend_overlap. `mask_mode` chooses whether to composite through the mask "
+        "you drew or the coarser one the model was actually given."
     )
     FUNCTION = "doit"
 
-    def doit(self, samples, vae, images, mask=None, mask_start=0, mask_end=-1, feather=11):
+    def doit(self, samples, vae, images, mask=None, mask_start=0, mask_end=-1, feather=11,
+             mask_mode="per-frame"):
         import torch
 
         z_video, _ = _unpack_av(samples, "samples")
@@ -721,7 +761,12 @@ class MpiH3DecodeAV:
         if mask is None:
             return (out,)
 
-        m = place_mask(mask, images.shape[0], mask_start, mask_end).unsqueeze(1)
+        if mask_mode == "as sampled":
+            m = sampled_mask_frames(
+                mask, z_video.shape, images.shape[0], (h, w), mask_start, mask_end)
+        else:
+            m = place_mask(mask, images.shape[0], mask_start, mask_end)
+        m = m.unsqueeze(1)
         if feather > 1:
             k = feather | 1  # an even kernel shifts the mask half a pixel sideways
             # Dilate BEFORE smoothing, the way LanPaint's MaskBlend does. That puts
@@ -921,6 +966,26 @@ if __name__ == "__main__":
         _sep = torch.nn.functional.max_pool2d(_m, (_k, 1), stride=1, padding=(_k // 2, 0))
         _sep = torch.nn.functional.max_pool2d(_sep, (1, _k), stride=1, padding=(0, _k // 2))
         assert torch.equal(_sq, _sep), _k
+
+    # sampled_mask_frames: the painted region, not the drawn one
+    _F = latent_frames(7)                       # 7 latent steps
+    _msk = torch.zeros((_F, 64, 64))
+    _msk[0, 20:24, 20:24] = 1.0                 # a tiny mark on frame 0 only
+    _shape = (1, 24, 7, 4, 4)                   # latent 4x4 -> each cell is 16px
+    _as = sampled_mask_frames(_msk, _shape, _F, (64, 64))
+    _pf = place_mask(_msk, _F)
+    assert _as.shape == _pf.shape == (_F, 64, 64)
+    assert (_as >= _pf).all()                   # never keeps less than the drawn mask
+    assert _as[0].sum() > _pf[0].sum()          # quantised out to whole cells
+    assert set(_as[0].unique().tolist()) <= {0.0, 1.0}
+    # frame 0 is its own latent step, so the mark must NOT bleed into step 1's frames
+    assert _as[1].sum() == 0, _as[1].sum()
+    # and a mark inside a 4-frame step covers every frame of that step
+    _msk2 = torch.zeros((_F, 64, 64)); _msk2[2, 20:24, 20:24] = 1.0
+    _as2 = sampled_mask_frames(_msk2, _shape, _F, (64, 64))
+    _f0, _f1 = frame_spans(7)[1]
+    assert _as2[_f0:_f1].sum() == _as2[_f0].sum() * (_f1 - _f0)
+    print("sampled_mask_frames ok")
 
     # place_mask: one mask covers the whole clip rather than frame 0 alone
     import torch
