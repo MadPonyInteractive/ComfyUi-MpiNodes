@@ -211,6 +211,15 @@ class MpiBrushTrain:
                 "sh_degree": ("INT", {"default": 3, "min": 0, "max": 3}),
                 "max_splats": ("INT", {"default": 10000000, "min": 10000, "max": 100000000, "step": 10000}),
                 "brush_path": ("STRING", {"default": "", "multiline": False}),
+                # Brush decodes and CACHES one u8 RGB copy of every training view in
+                # HOST ram, lazily, and its own default caps that at 1920. Two
+                # consequences, both measured (Cubric MPI-623): the cache is
+                # N_views * min(face_size, max_resolution)**2 * 3 bytes - 984 faces at
+                # 2048 is ~11.5 GB, at 1280 it is 4.5 GB - and a dual-res chain that
+                # renders 2048 faces had its top 6% silently thrown away by a default
+                # nobody chose. 2048 keeps what the chain produced; lower it when host
+                # RAM is the binding constraint, not VRAM (VRAM is flat at ~4.7 GB).
+                "max_resolution": ("INT", {"default": 2048, "min": 256, "max": 8192, "step": 64}),
             },
         }
 
@@ -226,7 +235,7 @@ class MpiBrushTrain:
     )
 
     def train(self, dataset_path, total_steps, export_every=5000, sh_degree=3,
-              max_splats=10000000, brush_path=""):
+              max_splats=10000000, brush_path="", max_resolution=2048):
         dataset_path = (dataset_path or "").strip().strip('"')
         if not os.path.isdir(dataset_path):
             raise FileNotFoundError(f"dataset_path is not a directory: {dataset_path}")
@@ -250,6 +259,7 @@ class MpiBrushTrain:
             "--export-every", str(export_every),
             "--sh-degree", str(sh_degree),
             "--max-splats", str(max_splats),
+            "--max-resolution", str(max_resolution),
         ]
         print(f"[MpiNodes] brush: {' '.join(cmd)}")
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
