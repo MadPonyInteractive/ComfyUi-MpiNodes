@@ -407,6 +407,99 @@ def plan_context(total_steps: int, wanted_frames: int):
 FPS_I = 24
 
 
+def plan_audio_window(start, end, frames, audio_steps):
+    """A frame range -> the audio latent steps it covers, snapped to whole steps.
+
+    Audio runs on a 40 Hz clock against 24 fps picture, so a frame boundary is a
+    whole audio step only every 3 frames. An off-grid range raises nowhere: it
+    lands the seam a fraction of a step out and the regenerated window drifts
+    against the picture, the same silent failure as an off-grid frame count. So
+    the range is snapped OUTWARDS -- start down, end up -- and the caller reports
+    what it actually used.
+
+    `end` of 0 means no audio window at all; -1 runs to the end of the clip, which
+    needs no snap because it takes the audio latent whole (a clip length on the
+    17k+5 grid is never a multiple of 3, so its last step is a fraction).
+
+    Returns `(a0, a1, f0, f1)` -- audio steps and the snapped frames -- all zero
+    when there is no window.
+    """
+    if end == 0:
+        return 0, 0, 0, 0
+    if start < 0:
+        raise ValueError(f"`audio_start` cannot be negative; got {start}.")
+    f0 = min(start - start % 3, frames)
+    if end < 0:
+        f1, a1 = frames, audio_steps
+    else:
+        f1 = min(end + (-end % 3), frames)
+        a1 = min(f1 * AUDIO_LATENT_FPS // FPS_I, audio_steps)
+    if f1 <= f0:
+        raise ValueError(
+            f"The audio window is empty: frames {start}..{end} snap to {f0}..{f1} "
+            f"inside a {frames}-frame clip. audio_end has to come after "
+            "audio_start, and audio_start has to fall inside the clip."
+        )
+    return f0 * AUDIO_LATENT_FPS // FPS_I, a1, f0, f1
+
+
+def audio_at_vae_rate(audio, audio_vae):
+    """The clip's waveform at the audio VAE's own rate, as [B, C, samples].
+
+    The encode resamples before encoding, so the latent lives in this domain and
+    anything spliced back into it has to be resampled the same way first.
+    """
+    waveform = audio["waveform"]
+    rate = audio["sample_rate"]
+    vae_rate = getattr(audio_vae, "audio_sample_rate", 32000)
+    if rate != vae_rate:
+        import torchaudio
+
+        waveform = torchaudio.functional.resample(waveform, rate, vae_rate)
+    return waveform, vae_rate
+
+
+def splice_audio(original, generated, s0, s1, crossfade, mode="replace"):
+    """Put a regenerated sample range back into the original waveform.
+
+    Both tensors are [B, C, samples] at the SAME rate; `s0`/`s1` are sample
+    indices. The crossfade ramps INSIDE the window at each end, so nothing
+    outside it is touched -- a hard splice clicks, and a click is the one
+    artefact an audio inpaint cannot hide. Equal power (sqrt), not linear: the
+    generated window is a different take, so the two sides do not correlate and a
+    linear pair dips through the middle of the crossover.
+
+    `mode` "replace" swaps the window out. "mix" sums the generated window UNDER
+    the original instead, which is the only way to layer a sound onto an existing
+    track: an audio mask selects a time range, not a source, so H3 regenerates
+    every source inside it -- dialogue, room tone and footsteps together. Replace
+    is right for a whole re-take and wrong for adding a servo under a line.
+    """
+    import torch
+
+    out = original.clone()
+    n = min(out.shape[-1], generated.shape[-1])
+    s0, s1 = max(0, min(s0, n)), max(0, min(s1, n))
+    if s1 <= s0:
+        return out
+
+    gen = generated[..., s0:s1].to(out)
+    xf = max(0, min(crossfade, (s1 - s0) // 2))
+    if xf:
+        t = torch.linspace(0, 1, xf + 2, dtype=gen.dtype, device=gen.device)[1:-1]
+        ramp = torch.ones(s1 - s0, dtype=gen.dtype, device=gen.device)
+        ramp[:xf] = t
+        ramp[-xf:] = t.flip(0)
+        gen = gen * ramp.sqrt()
+        if mode == "replace":
+            gen = gen + out[..., s0:s1] * (1.0 - ramp).sqrt()
+    if mode == "mix":
+        out[..., s0:s1] = out[..., s0:s1] + gen
+        return out.clamp_(-1.0, 1.0)
+    out[..., s0:s1] = gen
+    return out
+
+
 class MpiH3MaskedPrefix:
     @classmethod
     def INPUT_TYPES(cls):
@@ -632,11 +725,13 @@ class MpiH3EncodeAV:
                 "mask": ("MASK", {"tooltip": "Per-frame inpainting mask at image resolution, e.g. from SAM3 (1 = regenerate, 0 = keep). It may cover the WHOLE clip or just a range of it - say where its first frame sits with mask_start. Left unconnected this is a plain encode with no mask, exactly as before."}),
                 "mask_start": ("INT", {"default": 0, "min": 0, "max": 100000, "tooltip": "The clip frame the mask's FIRST frame lands on. Leave at 0 when the mask covers the whole clip; set it to the range start when the mask came from a segmenter run over part of the clip. Frames outside the mask are kept."}),
                 "mask_end": ("INT", {"default": -1, "min": -1, "max": 100000, "tooltip": "Clip frame to stop masking at, exclusive. -1 uses all of the supplied mask, so the default range is whatever the mask covers."}),
+                "audio_start": ("INT", {"default": 0, "min": 0, "max": 100000, "tooltip": "First clip frame of the AUDIO window to regenerate, at 24 fps. Snapped DOWN to a multiple of 3 - audio's 40 Hz clock only lands on a whole step every 3 frames, and an off-grid edge drifts the sound against the picture with no error. Only used when audio_end is not 0."}),
+                "audio_end": ("INT", {"default": 0, "min": -1, "max": 100000, "tooltip": "Clip frame to stop regenerating audio at, exclusive; snapped UP to a multiple of 3. 0 - the default - keeps the whole soundtrack, which is the plain inpaint. -1 runs to the end of the clip. Unlike the picture mask this selects a TIME range, not a source: everything sounding in the window is regenerated together, so it gives 'redo this window to match the video', never 'add a sound under the dialogue' - for that, decode in mix mode."}),
             },
         }
 
-    RETURN_TYPES = ("LATENT",)
-    RETURN_NAMES = ("latent",)
+    RETURN_TYPES = ("LATENT", "STRING")
+    RETURN_NAMES = ("latent", "info")
     CATEGORY = "MpiNodes/Utils"
     DESCRIPTION = (
         "Encode a clip and its soundtrack into ONE MiniMax H3 AV latent, which is "
@@ -644,34 +739,37 @@ class MpiH3EncodeAV:
         "separately (VAEEncode + VAEEncodeAudio) and exposes no way to join them, so "
         "without this the only route to a joint latent is a third-party fork. "
         "With a `mask` it is also the inpainting encode: the mask is packed onto the "
-        "video latent's own grid and the audio is masked all-keep, so a host app "
-        "reaches H3 inpainting from IMAGE + AUDIO + MASK, with no VIDEO type and no "
-        "file loader in the graph. The mask may cover only PART of the clip - which "
-        "is what a segmenter run over a frame range returns - as long as mask_start "
-        "says where it begins. Pair it with MpiH3DecodeAV."
+        "video latent's own grid, so a host app reaches H3 inpainting from IMAGE + "
+        "AUDIO + MASK, with no VIDEO type and no file loader in the graph. The mask "
+        "may cover only PART of the clip - which is what a segmenter run over a "
+        "frame range returns - as long as mask_start says where it begins. "
+        "`audio_start`/`audio_end` open a window in the SOUNDTRACK the same way, "
+        "which is context-aware foley: the model hears the rest of the track, so "
+        "what it generates matches the room and the mic and is in sync by "
+        "construction. The two masks are independent - an audio window with no "
+        "picture mask regenerates sound over untouched video. Pair it with "
+        "MpiH3DecodeAV."
     )
     FUNCTION = "doit"
 
-    def doit(self, vae, images, audio_vae, audio, mask=None, mask_start=0, mask_end=-1):
+    def doit(self, vae, images, audio_vae, audio, mask=None, mask_start=0, mask_end=-1,
+             audio_start=0, audio_end=0):
         # Imported here, not at module scope, so the pack still loads on a
         # ComfyUI without H3 -- same reason as MpiH3References.
         import torch
-        import torchaudio
         import comfy.nested_tensor
 
         video_z = vae.encode(images[..., :3])
 
-        waveform = audio["waveform"]
-        rate = audio["sample_rate"]
-        vae_rate = getattr(audio_vae, "audio_sample_rate", 32000)
-        if rate != vae_rate:
-            waveform = torchaudio.functional.resample(waveform, rate, vae_rate)
+        waveform, _vae_rate = audio_at_vae_rate(audio, audio_vae)
         # Batch 1 only: H3 is batch size 1 on both streams, and a second item
         # here would pair the wrong soundtrack to the picture rather than fail.
         audio_z = audio_vae.encode(waveform[:1].movedim(1, -1))
 
         out = {"samples": comfy.nested_tensor.NestedTensor((video_z, audio_z))}
-        if mask is not None:
+        a0, a1, f0, f1 = plan_audio_window(
+            audio_start, audio_end, images.shape[0], audio_z.shape[-1])
+        if mask is not None or a1 > a0:
             # Only the inpainting path needs this: the mask and the composite in
             # MpiH3DecodeAV are indexed in PIXEL frames, so the clip has to survive
             # the round trip frame-for-frame. Off the grid the VAE packs what it can
@@ -687,14 +785,32 @@ class MpiH3EncodeAV:
                     f"Use {snap_h3_frames(images.shape[0])} frames "
                     f"(5, 22, 39, 56, 73, ...); MpiH3Length picks one for you."
                 )
-            # The audio mask is zeros -- keep the whole soundtrack -- and it is sized
-            # off the encoded audio latent itself, so nothing here needs a frame
-            # count or a frame rate to get it right.
-            out["noise_mask"] = comfy.nested_tensor.NestedTensor((
-                pack_video_mask(mask, video_z.shape, mask_start, mask_end),
-                torch.zeros((1, 1) + tuple(audio_z.shape[2:]), dtype=torch.float32),
-            ))
-        return (out,)
+            # Both halves default to zeros -- keep everything -- and each is sized
+            # off its own encoded latent, so nothing here needs a frame count or a
+            # frame rate to get the shapes right. Either half may stay all-keep:
+            # a picture mask with no audio window is the plain inpaint, and an
+            # audio window with no picture mask is foley over untouched video.
+            mask_v = (
+                pack_video_mask(mask, video_z.shape, mask_start, mask_end)
+                if mask is not None
+                else torch.zeros((1, 1) + tuple(video_z.shape[2:]), dtype=torch.float32)
+            )
+            mask_a = torch.zeros((1, 1) + tuple(audio_z.shape[2:]), dtype=torch.float32)
+            mask_a[..., a0:a1] = 1.0
+            out["noise_mask"] = comfy.nested_tensor.NestedTensor((mask_v, mask_a))
+
+        parts = []
+        parts.append(
+            f"picture: mask over frames {mask_start}.."
+            f"{mask_end if mask_end >= 0 else images.shape[0]}"
+            if mask is not None else "picture: no mask"
+        )
+        parts.append(
+            f"audio: regenerating frames {f0}..{f1} "
+            f"(steps {a0}..{a1} of {audio_z.shape[-1]})"
+            if a1 > a0 else "audio: keeping all"
+        )
+        return (out, "; ".join(parts))
 
 
 class MpiH3DecodeAV:
@@ -712,33 +828,42 @@ class MpiH3DecodeAV:
                 "mask_end": ("INT", {"default": -1, "min": -1, "max": 100000, "tooltip": "Must match the encode's mask_end."}),
                 "feather": ("INT", {"default": 11, "min": 1, "max": 101, "step": 2, "tooltip": "Softens the mask edge, in pixels, so the seam does not show (1 = hard cut). Odd only: the kernel is centred on the pixel, and min 0 with step 2 put every reachable value on the EVEN grid, so the arrows could never return to the default 11. Dilate then Gaussian, matching the LanPaint blend_overlap: the ramp sits OUTSIDE the mask you drew, so the inpainted content keeps full strength at its own edge."}),
                 "mask_mode": (["per-frame", "as sampled"], {"default": "per-frame", "tooltip": "Which mask to composite through. `per-frame` keeps the exact mask you drew - tightest result, but the model painted a blockier, temporally wider region than that, so the seam lands inside the repaint. `as sampled` rebuilds the mask the model was actually given (latent grid, union of the frames each step packs, the DiT's own patch pooling) so the kept region matches the painted one; the boundary is blockier but it falls where the model stopped working, and feather can come right down."}),
+                "audio_vae": ("VAE", {"tooltip": "The H3 audio VAE. Wire it only to decode a regenerated audio window - without it the soundtrack is passed through untouched, which is what a picture-only inpaint wants."}),
+                "audio": ("AUDIO", {"tooltip": "The ORIGINAL soundtrack the encode was given. Everything outside the audio window is taken from here, not from a VAE round trip of it."}),
+                "audio_start": ("INT", {"default": 0, "min": 0, "max": 100000, "tooltip": "Must match the encode's audio_start."}),
+                "audio_end": ("INT", {"default": 0, "min": -1, "max": 100000, "tooltip": "Must match the encode's audio_end. 0 passes the original soundtrack straight through."}),
+                "audio_mode": (["replace", "mix"], {"default": "replace", "tooltip": "`replace` swaps the window for what the model generated - right for a whole re-take of that moment. `mix` sums it UNDER the original instead, which is the only way to layer a new sound onto a track that already has dialogue: an audio mask selects a time range, not a source, so the model regenerates everything sounding in the window and replacing it throws the original performance away."}),
+                "audio_crossfade": ("INT", {"default": 50, "min": 0, "max": 2000, "tooltip": "Length of the crossfade at each end of the window, in milliseconds. A hard splice clicks, and a click is the one artefact an audio edit cannot hide. The ramp sits INSIDE the window, so the kept soundtrack is never touched. This is the audio half of LanPaint's pair - the counterpart to feather."}),
             },
         }
 
-    RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("images",)
+    RETURN_TYPES = ("IMAGE", "AUDIO")
+    RETURN_NAMES = ("images", "audio")
     CATEGORY = "MpiNodes/Utils"
     DESCRIPTION = (
         "Decode the video half of a MiniMax H3 AV latent and composite it back into "
         "the original frames through the inpainting mask, which is what finishes the "
         "job MpiH3EncodeAV starts. Everything outside the mask is the ORIGINAL pixel, "
         "not a VAE round trip of it, so an inpaint does not quietly soften the whole "
-        "frame. The audio half is deliberately NOT decoded: the encode masks audio "
-        "all-keep, so the soundtrack that comes back is the one that went in and the "
-        "original AUDIO should be wired straight past this node to the combine. That "
-        "is also why there is no audio_vae input, and no audio cross-fade either: "
-        "nothing is spliced into the soundtrack, so there is no audio seam to hide. "
-        "`feather` is the video half of LanPaint's pair, dilate-then-Gaussian like "
-        "its blend_overlap. `mask_mode` chooses whether to composite through the mask "
-        "you drew or the coarser one the model was actually given."
+        "frame, and the same holds for the soundtrack: with no audio_vae the audio "
+        "input is passed through untouched, so a picture-only inpaint needs no audio "
+        "wiring at all. Give it the audio_vae and the encode's audio window and it "
+        "decodes the audio half too and splices the regenerated stretch back in over "
+        "a crossfade. `feather` and `audio_crossfade` are the two halves of "
+        "LanPaint's pair - dilate-then-Gaussian like its blend_overlap, and an "
+        "equal-power fade like its audio_crossfade. `mask_mode` chooses whether to "
+        "composite through the mask you drew or the coarser one the model was "
+        "actually given; `audio_mode` whether the window replaces the original or "
+        "layers on top of it."
     )
     FUNCTION = "doit"
 
     def doit(self, samples, vae, images, mask=None, mask_start=0, mask_end=-1, feather=11,
-             mask_mode="per-frame"):
+             mask_mode="per-frame", audio_vae=None, audio=None, audio_start=0, audio_end=0,
+             audio_mode="replace", audio_crossfade=50):
         import torch
 
-        z_video, _ = _unpack_av(samples, "samples")
+        z_video, z_audio = _unpack_av(samples, "samples")
         out = vae.decode(z_video)
         if out.ndim == 5:  # [1, F, H, W, C]: fold the batch into the frames
             out = out.reshape(-1, *out.shape[-3:])
@@ -758,8 +883,12 @@ class MpiH3DecodeAV:
                 "MpiH3Length before encoding."
             )
 
+        out_audio = self.compose_audio(
+            z_audio, audio_vae, audio, images.shape[0], audio_start, audio_end,
+            audio_mode, audio_crossfade)
+
         if mask is None:
-            return (out,)
+            return (out, out_audio)
 
         if mask_mode == "as sampled":
             m = sampled_mask_frames(
@@ -791,7 +920,47 @@ class MpiH3DecodeAV:
             m = torch.nn.functional.conv2d(m, g.view(1, 1, 1, k))
         m = m.movedim(1, -1).to(out)  # [F, H, W, 1], broadcast over channels
 
-        return (images.to(out) * (1.0 - m) + out * m,)
+        return (images.to(out) * (1.0 - m) + out * m, out_audio)
+
+    @staticmethod
+    def compose_audio(z_audio, audio_vae, audio, frames, start, end, mode, crossfade_ms):
+        """The soundtrack this node hands on: passed through, or spliced.
+
+        Deliberately NOT core's `vae_decode_audio`: that divides the decode by its
+        own standard deviation to keep a bare decode from clipping, which puts it
+        in a different loudness domain from the original waveform it is about to
+        be spliced into. Here the kept audio is the reference, so the decode is
+        taken raw and the levels line up on their own.
+        """
+        import torch
+
+        if audio is None:
+            # Something has to come out of an AUDIO socket; this is the same
+            # 1-sample sentinel the loaders use for "nothing here".
+            return {"waveform": torch.zeros((1, 2, 1)), "sample_rate": 44100}
+        if audio_vae is None or end == 0:
+            return audio
+
+        wave, rate = audio_at_vae_rate(audio, audio_vae)
+        wave = wave[:1]
+        gen = audio_vae.decode(z_audio).movedim(-1, 1)
+        if wave.shape[1] == 1 and gen.shape[1] > 1:
+            wave = wave.expand(-1, gen.shape[1], -1)
+
+        steps = z_audio.shape[-1]
+        per_step = gen.shape[-1] // max(1, steps)
+        a0, a1, _f0, _f1 = plan_audio_window(start, end, frames, steps)
+        if wave.shape[-1] < a1 * per_step:
+            raise ValueError(
+                f"The soundtrack is {wave.shape[-1]} samples but the audio window "
+                f"ends at {a1 * per_step}. It is shorter than the clip, so the "
+                "window would be silently truncated - give this node the same "
+                "audio the encode was given."
+            )
+        spliced = splice_audio(
+            wave.to(gen), gen, a0 * per_step, a1 * per_step,
+            int(rate * crossfade_ms / 1000), mode)
+        return {"waveform": spliced, "sample_rate": rate}
 
 
 def _unpack_av(latent, name: str):
@@ -994,5 +1163,102 @@ if __name__ == "__main__":
     assert place_mask(_one, 22)[21].all()
     # but a deliberate placement stays a placement
     assert not place_mask(_one, 22, start=5)[6].any()
+
+    # --- audio window: the second clock, and the splice ---------------------
+    # 0 means off, and off must stay off - this is the default on both nodes, so
+    # a bug here would put an audio mask on every plain inpaint.
+    assert plan_audio_window(0, 0, 73, 121) == (0, 0, 0, 0)
+    # 24 frames = 1 s = 40 audio steps, and both edges already sit on the grid.
+    assert plan_audio_window(24, 48, 73, 121) == (40, 80, 24, 48)
+    # Off-grid edges snap OUTWARDS, never inwards: 25..47 covers 24..48. Snapping
+    # in would leave a fraction of a step regenerating on one side of the seam.
+    assert plan_audio_window(25, 47, 73, 121) == (40, 80, 24, 48)
+    # -1 takes the latent whole. A 73-frame clip is 121.67 steps, so computing the
+    # end from the frame count instead would drop the last fraction of a step.
+    assert plan_audio_window(0, -1, 73, 121) == (0, 121, 0, 73)
+    # A window past the end is clamped to the clip, not to a step that isn't there.
+    assert plan_audio_window(60, 200, 73, 121) == (100, 121, 60, 73)
+    # A window smaller than a step is widened to one, not rejected: outward is
+    # outward, and 0..2 is a request for the first three frames of sound.
+    assert plan_audio_window(0, 2, 73, 121) == (0, 5, 0, 3)
+    assert plan_audio_window(10, 11, 73, 121) == (15, 20, 9, 12)
+    # A REVERSED range is the one that cannot be snapped into anything.
+    for _bad in ((50, 10), (200, 210)):
+        try:
+            plan_audio_window(_bad[0], _bad[1], 73, 121)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError(f"an empty window must raise: {_bad}")
+
+    # The splice: outside the window the original survives EXACTLY. That is the
+    # audio half of "everything outside the mask is the original pixel".
+    _orig = torch.full((1, 2, 1000), 0.5)
+    _gen = torch.full((1, 2, 1000), -0.25)
+    _sp = splice_audio(_orig, _gen, 400, 600, 0)
+    assert torch.equal(_sp[..., :400], _orig[..., :400])
+    assert torch.equal(_sp[..., 600:], _orig[..., 600:])
+    assert torch.equal(_sp[..., 400:600], _gen[..., 400:600])
+    assert torch.equal(_orig, torch.full((1, 2, 1000), 0.5)), "the input was mutated"
+
+    # With a crossfade the ramp lives INSIDE the window - the kept audio is still
+    # untouched - and the middle is still fully the generated take.
+    _sp = splice_audio(_orig, _gen, 400, 600, 50)
+    assert torch.equal(_sp[..., :400], _orig[..., :400])
+    assert torch.equal(_sp[..., 600:], _orig[..., 600:])
+    assert torch.allclose(_sp[..., 500], _gen[..., 500])
+    assert not torch.allclose(_sp[..., 410], _gen[..., 410]), "no fade at the edge"
+    # Equal power, measured on the GAIN PAIR rather than on a mixed signal: run
+    # the splice once with only the original and once with only the generated
+    # take, and the two gains must square-sum to 1 across the whole crossover.
+    # That is the property sqrt buys - a linear pair sums to 1 unsquared and dips
+    # ~3 dB through the middle when the two sides do not correlate.
+    _zero = torch.zeros((1, 2, 1000))
+    _keep = splice_audio(torch.ones((1, 2, 1000)), _zero, 400, 600, 50)
+    _new = splice_audio(_zero, torch.ones((1, 2, 1000)), 400, 600, 50)
+    _power = _keep[..., 400:600] ** 2 + _new[..., 400:600] ** 2
+    assert torch.allclose(_power, torch.ones_like(_power), atol=1e-6), _power.min()
+
+    # mix layers instead of replacing, and clamps rather than wrapping round.
+    _sp = splice_audio(_orig, _gen, 400, 600, 0, mode="mix")
+    assert torch.allclose(_sp[..., 500], _orig[..., 500] + _gen[..., 500])
+    assert splice_audio(_orig, torch.ones_like(_gen), 0, 1000, 0, mode="mix").max() <= 1.0
+    # A crossfade longer than the window is clamped, not an error.
+    assert splice_audio(_orig, _gen, 400, 410, 10_000).shape == _orig.shape
+
+    # MpiH3DecodeAV.compose_audio end to end, on a stand-in VAE -- the widgets
+    # and the sample arithmetic are the half that a graph cannot check for you.
+    class _AVae:
+        audio_sample_rate = 32000
+
+        def decode(self, z):                    # core hands back [B, samples, C]
+            return torch.full((1, z.shape[-1] * 800, 2), -0.75)
+
+    _z = torch.zeros((1, 32, 2, 121))           # 121 steps = a 73-frame clip
+    _track = {"waveform": torch.full((1, 2, 121 * 800), 0.5), "sample_rate": 32000}
+    _compose = MpiH3DecodeAV.compose_audio
+
+    # No soundtrack at all still fills the socket, with the loaders' sentinel.
+    assert _compose(_z, None, None, 73, 0, 0, "replace", 50)["waveform"].shape[-1] == 1
+    # No VAE, or no window, passes the original through UNTOUCHED - not a round
+    # trip of it. This is the picture-only inpaint, and it must not change.
+    assert _compose(_z, None, _track, 73, 0, -1, "replace", 50) is _track
+    assert _compose(_z, _AVae(), _track, 73, 0, 0, "replace", 50) is _track
+
+    # Frames 24..48 = audio steps 40..80 = samples 32000..64000 at 800/step.
+    _outw = _compose(_z, _AVae(), _track, 73, 24, 48, "replace", 0)["waveform"]
+    assert _outw.shape == _track["waveform"].shape
+    assert torch.equal(_outw[..., :32000], _track["waveform"][..., :32000])
+    assert torch.equal(_outw[..., 64000:], _track["waveform"][..., 64000:])
+    assert torch.allclose(_outw[..., 32000:64000], torch.tensor(-0.75))
+    # A soundtrack shorter than the window is an error, not a silent truncation.
+    try:
+        _compose(_z, _AVae(), {"waveform": torch.zeros((1, 2, 1000)),
+                               "sample_rate": 32000}, 73, 24, 48, "replace", 0)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("a short soundtrack must raise")
+    print("audio window + splice ok")
 
     print("h3.py self-check passed")
