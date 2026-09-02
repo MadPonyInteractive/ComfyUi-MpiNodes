@@ -36,6 +36,7 @@ from .img import (
     MpiBoxCrop,
     MpiBoxMask,
     MpiInpaintHeal,
+    MpiImageSplice,
 )
 from .text_list_replace import MpiTextListReplace
 from .text_list_join import MpiTextListJoin
@@ -102,7 +103,7 @@ from .multi_text import (
 from .wan import MpiWanFrames, MpiWanSeconds
 from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3Length, MpiH3MaskedPrefix, MpiH3References
 from .vram import MpiClearVram
-from .video import MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
+from .video import MpiAudioRange, MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
 from .latent import MpiSaveLatent, MpiLoadLatent, MpiStageLatents, MpiLatentUpscale
 from .preview import MpiVideoSamplingPreview, MpiTinyVaeLoader
 from .splat import MpiBrushTrain
@@ -179,6 +180,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiUpscaleModelScale": MpiUpscaleModelScale,
     "MpiLoadImageFromPath": MpiLoadImageFromPath,
     "MpiCrop": MpiCrop,
+    "MpiImageSplice": MpiImageSplice,
     "MpiMaskSquareBbox": MpiMaskSquareBbox,
     "MpiBox": MpiBox,
     "MpiFromBox": MpiFromBox,
@@ -214,6 +216,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiH3MaskedPrefix": MpiH3MaskedPrefix,
     "MpiH3References": MpiH3References,
     "MpiClearVram": MpiClearVram,
+    "MpiAudioRange": MpiAudioRange,
     "MpiHasAudio": MpiHasAudio,
     "MpiSaveVideo": MpiSaveVideo,
     "MpiLoadVideo": MpiLoadVideo,
@@ -296,6 +299,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiUpscaleModelScale": "Mpi Upscale Model Scale",
     "MpiLoadImageFromPath": "Mpi Load Image From Path",
     "MpiCrop": "Mpi Crop",
+    "MpiImageSplice": "Mpi Image Splice",
     "MpiMaskSquareBbox": "Mpi Mask Square Bbox",
     "MpiBox": "Mpi Box",
     "MpiFromBox": "Mpi From Box",
@@ -331,6 +335,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiH3MaskedPrefix": "Mpi H3 Masked Prefix",
     "MpiH3References": "Mpi H3 References",
     "MpiClearVram": "Mpi Clear Vram",
+    "MpiAudioRange": "Mpi Audio Range",
     "MpiHasAudio": "Mpi Has Audio",
     "MpiSaveVideo": "Mpi Save Video",
     "MpiLoadVideo": "Mpi Load Video",

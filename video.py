@@ -475,3 +475,48 @@ class MpiSaveVideo:
         return {"ui": {"videos": [
             {"filename": name, "subfolder": subfolder, "type": "output", "format": "video/mp4"}
         ]}}
+
+
+class MpiAudioRange:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio": ("AUDIO", {"tooltip": "The clip's full soundtrack."}),
+                "fps": ("FLOAT", {"default": 24.0, "min": 0.01, "max": 1000.0, "step": 0.01, "tooltip": "Frame rate the start/end indices are counted in. Wire the loader's own fps - a guessed rate slides the audio against the picture instead of failing."}),
+                "start": ("INT", {"default": 0, "min": -0xFFFFFFFFFFFFFFFF, "max": 0xFFFFFFFFFFFFFFFF, "tooltip": "Start FRAME (inclusive). Negative counts from the end. Same convention as MpiListRange, so both nodes take the same two numbers."}),
+                "end": ("INT", {"default": -1, "min": -0xFFFFFFFFFFFFFFFF, "max": 0xFFFFFFFFFFFFFFFF, "tooltip": "End FRAME (inclusive). -1 is the last frame. Same convention as MpiListRange."}),
+            },
+        }
+
+    RETURN_TYPES = ("AUDIO",)
+    RETURN_NAMES = ("audio",)
+    CATEGORY = "MpiNodes/Video"
+    DESCRIPTION = (
+        "Cut a soundtrack to a FRAME range, using the same inclusive start/end that "
+        "MpiListRange takes, so one pair of numbers windows the picture and the sound "
+        "together. Exists for windowed work on an audio-video model: cutting the frames "
+        "with MpiListRange and leaving the audio whole hands the model a soundtrack that "
+        "does not line up with the picture, and nothing downstream can notice - the "
+        "tensors are all valid, the result is just conditioned on the wrong moment."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, audio, fps, start, end):
+        waveform = audio["waveform"]
+        rate = audio["sample_rate"]
+        total = waveform.shape[-1]
+        frames = max(1, round(total / rate * fps))
+
+        s = start + frames if start < 0 else start
+        e = end + frames if end < 0 else end
+        s = max(0, min(s, frames - 1))
+        e = max(0, min(e, frames - 1))
+        if e < s:
+            return ({"waveform": waveform[..., :0], "sample_rate": rate},)
+
+        # Clamped rather than trusted: frames is derived from the waveform length,
+        # so the last frame's end can round a sample or two past the real tail.
+        i0 = min(total, round(s / fps * rate))
+        i1 = min(total, round((e + 1) / fps * rate))
+        return ({"waveform": waveform[..., i0:i1], "sample_rate": rate},)

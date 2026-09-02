@@ -890,6 +890,44 @@ class MpiInpaintHeal:
         return (torch.stack(out),)
 
 
+class MpiImageSplice:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "images": ("IMAGE", {"tooltip": "The full clip. Returned unchanged except where the patch is written."}),
+                "patch": ("IMAGE", {"tooltip": "The frames to write in, e.g. an inpainted window."}),
+                "start": ("INT", {"default": 0, "min": 0, "max": 0xFFFFFFFF, "tooltip": "The clip frame the patch's FIRST frame is written at - the same index the window was cut at."}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = (
+        "Write a run of frames back into a longer clip at a given frame. The return "
+        "leg of windowed work: cut a window out, run the expensive thing on it alone, "
+        "splice the result back. A mismatched canvas or a patch running past the end "
+        "raises, because either one otherwise lands as a clip that plays but is wrong."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, images, patch, start):
+        if patch.shape[1:] != images.shape[1:]:
+            raise ValueError(
+                f"The patch is {patch.shape[2]}x{patch.shape[1]} and the clip is "
+                f"{images.shape[2]}x{images.shape[1]}; a splice needs one canvas."
+            )
+        if start + patch.shape[0] > images.shape[0]:
+            raise ValueError(
+                f"A {patch.shape[0]}-frame patch written at frame {start} runs past "
+                f"the end of a {images.shape[0]}-frame clip."
+            )
+        out = images.clone()
+        out[start:start + patch.shape[0]] = patch.to(out)
+        return (out,)
+
+
 if __name__ == "__main__":
     # square_bbox_from_mask: tight box -> centered square, clamped to image
     m = torch.zeros((100, 200))
@@ -962,5 +1000,21 @@ if __name__ == "__main__":
     # untouched pixels must never move
     assert torch.allclose(fixed[~hm], broken[~hm], atol=1e-6)
     print("heal_region ok")
+
+    # --- splice: the window goes back exactly where it was cut from ------
+    clip = torch.zeros(10, 4, 4, 3)
+    win = torch.ones(3, 4, 4, 3)
+    spliced = MpiImageSplice().doit(clip, win, 5)[0]
+    assert spliced[5:8].min() == 1.0, "the patch must land at start"
+    assert spliced[:5].max() == 0.0 and spliced[8:].max() == 0.0, "nothing else moves"
+    assert clip.max() == 0.0, "the input clip must not be mutated in place"
+    for _bad, _at in ((torch.ones(3, 2, 2, 3), 5), (torch.ones(6, 4, 4, 3), 5)):
+        try:
+            MpiImageSplice().doit(clip, _bad, _at)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("a mismatched splice must raise")
+    print("splice ok")
 
     print("ok")
