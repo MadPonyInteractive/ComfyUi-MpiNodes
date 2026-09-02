@@ -371,6 +371,22 @@ def tail_span(total_steps: int, steps: int) -> int:
     return sum(FRAME_PER_TOKEN[k % 5] for k in range(max(0, total_steps - steps), total_steps))
 
 
+def frame_spans(steps: int):
+    """(start, end) pixel-frame range each latent step packs, step 0 first.
+
+    The same period-5 packing `tail_span` counts from the other end, walked
+    forwards. Anything mapping a PER-FRAME signal onto the latent grid has to
+    walk this rather than divide by a constant: step 0 carries one frame and
+    every other step carries four, so the two clocks never line up.
+    """
+    out, f = [], 0
+    for k in range(steps):
+        span = FRAME_PER_TOKEN[k % 5]
+        out.append((f, f + span))
+        f += span
+    return out
+
+
 def plan_context(total_steps: int, wanted_frames: int):
     """Pick the tail of a clip that is a valid context length.
 
@@ -496,6 +512,69 @@ class MpiH3MaskedPrefix:
         return (out, frames, new_frames, report)
 
 
+def latent_frames(steps: int) -> int:
+    """Pixel frames a video latent of `steps` steps decodes back to."""
+    return frame_spans(steps)[-1][1] if steps else 0
+
+
+def place_mask(mask, frames, start=0, end=-1):
+    """A mask covering PART of a clip -> a full-length [F, H, W] at frame rate.
+
+    A segmenter run over a frame range returns masks for that range only, so its
+    row 0 is frame `start`, not frame 0. Nothing downstream can notice the shift:
+    the tensor is a valid mask either way, so an unplaced sub-range mask inpaints
+    the wrong moment of the clip and returns a clean render of the wrong thing.
+    Passing the whole clip's masks is just the `start = 0` case of this.
+
+    `end` clips the tail, counted in whole-clip frames; -1 keeps all of it.
+    """
+    import torch
+
+    if mask.ndim != 3:
+        raise ValueError(
+            f"`mask` must be a per-frame mask [F, H, W]; got {tuple(mask.shape)}."
+        )
+    if start < 0:
+        raise ValueError(f"`mask_start` cannot be negative; got {start}.")
+    if start + mask.shape[0] > frames:
+        raise ValueError(
+            f"A {mask.shape[0]}-frame mask placed at frame {start} runs past the "
+            f"end of a {frames}-frame clip. Either the mask covers a different "
+            f"range than mask_start says, or it came from a different clip."
+        )
+
+    out = torch.zeros((frames,) + tuple(mask.shape[1:]), dtype=torch.float32)
+    out[start:start + mask.shape[0]] = mask.float()
+    if end >= 0:
+        out[end:] = 0.0
+    return out
+
+
+def pack_video_mask(mask, video_shape, start=0, end=-1):
+    """Per-frame pixel mask -> the video latent's own (1, 1, T, H, W) grid.
+
+    Built at latent resolution on purpose, the same reason MpiH3MaskedPrefix
+    builds its own: core's reshape_mask INTERPOLATES a mask that does not match,
+    and on the packed time axis that snaps each latent step to a SINGLE picked
+    frame, so a mask covering only a few frames vanishes with no error at all.
+    Here each step takes the UNION of the frames it really packs, and the spatial
+    reduction is a max too, so a thin mask is not averaged below the strength it
+    exists to carry.
+
+    The mask may cover only part of the clip -- see `place_mask`.
+    """
+    import torch
+
+    t, h, w = video_shape[2], video_shape[3], video_shape[4]
+    m = place_mask(mask, latent_frames(t), start, end)
+    m = torch.nn.functional.adaptive_max_pool2d(m.unsqueeze(1), (h, w))[:, 0]
+
+    out = torch.zeros((1, 1, t, h, w), dtype=torch.float32)
+    for k, (f0, f1) in enumerate(frame_spans(t)):
+        out[0, 0, k] = m[f0:f1].amax(0)
+    return out
+
+
 class MpiH3EncodeAV:
     @classmethod
     def INPUT_TYPES(cls):
@@ -506,6 +585,11 @@ class MpiH3EncodeAV:
                 "audio_vae": ("VAE", {"tooltip": "The H3 audio VAE."}),
                 "audio": ("AUDIO", {"tooltip": "The clip's soundtrack. Resampled to the audio VAE's own rate if it does not already match."}),
             },
+            "optional": {
+                "mask": ("MASK", {"tooltip": "Per-frame inpainting mask at image resolution, e.g. from SAM3 (1 = regenerate, 0 = keep). It may cover the WHOLE clip or just a range of it - say where its first frame sits with mask_start. Left unconnected this is a plain encode with no mask, exactly as before."}),
+                "mask_start": ("INT", {"default": 0, "min": 0, "max": 100000, "tooltip": "The clip frame the mask's FIRST frame lands on. Leave at 0 when the mask covers the whole clip; set it to the range start when the mask came from a segmenter run over part of the clip. Frames outside the mask are kept."}),
+                "mask_end": ("INT", {"default": -1, "min": -1, "max": 100000, "tooltip": "Clip frame to stop masking at, exclusive. -1 uses all of the supplied mask, so the default range is whatever the mask covers."}),
+            },
         }
 
     RETURN_TYPES = ("LATENT",)
@@ -515,13 +599,20 @@ class MpiH3EncodeAV:
         "Encode a clip and its soundtrack into ONE MiniMax H3 AV latent, which is "
         "what MpiH3MaskedPrefix takes as its context. Core encodes the two streams "
         "separately (VAEEncode + VAEEncodeAudio) and exposes no way to join them, so "
-        "without this the only route to a joint latent is a third-party fork."
+        "without this the only route to a joint latent is a third-party fork. "
+        "With a `mask` it is also the inpainting encode: the mask is packed onto the "
+        "video latent's own grid and the audio is masked all-keep, so a host app "
+        "reaches H3 inpainting from IMAGE + AUDIO + MASK, with no VIDEO type and no "
+        "file loader in the graph. The mask may cover only PART of the clip - which "
+        "is what a segmenter run over a frame range returns - as long as mask_start "
+        "says where it begins. Pair it with MpiH3DecodeAV."
     )
     FUNCTION = "doit"
 
-    def doit(self, vae, images, audio_vae, audio):
+    def doit(self, vae, images, audio_vae, audio, mask=None, mask_start=0, mask_end=-1):
         # Imported here, not at module scope, so the pack still loads on a
         # ComfyUI without H3 -- same reason as MpiH3References.
+        import torch
         import torchaudio
         import comfy.nested_tensor
 
@@ -536,7 +627,100 @@ class MpiH3EncodeAV:
         # here would pair the wrong soundtrack to the picture rather than fail.
         audio_z = audio_vae.encode(waveform[:1].movedim(1, -1))
 
-        return ({"samples": comfy.nested_tensor.NestedTensor((video_z, audio_z))},)
+        out = {"samples": comfy.nested_tensor.NestedTensor((video_z, audio_z))}
+        if mask is not None:
+            # The audio mask is zeros -- keep the whole soundtrack -- and it is sized
+            # off the encoded audio latent itself, so nothing here needs a frame
+            # count or a frame rate to get it right.
+            out["noise_mask"] = comfy.nested_tensor.NestedTensor((
+                pack_video_mask(mask, video_z.shape, mask_start, mask_end),
+                torch.zeros((1, 1) + tuple(audio_z.shape[2:]), dtype=torch.float32),
+            ))
+        return (out,)
+
+
+class MpiH3DecodeAV:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "samples": ("LATENT", {"tooltip": "The sampled AV latent."}),
+                "vae": ("VAE", {"tooltip": "The H3 video VAE."}),
+                "images": ("IMAGE", {"tooltip": "The ORIGINAL frames the encode was given. Everything outside the mask is taken from here, not from the decode."}),
+            },
+            "optional": {
+                "mask": ("MASK", {"tooltip": "The SAME mask the encode was given (1 = regenerate, 0 = keep). Unconnected returns the decode whole, with no compositing."}),
+                "mask_start": ("INT", {"default": 0, "min": 0, "max": 100000, "tooltip": "Must match the encode's mask_start."}),
+                "mask_end": ("INT", {"default": -1, "min": -1, "max": 100000, "tooltip": "Must match the encode's mask_end."}),
+                "feather": ("INT", {"default": 11, "min": 0, "max": 101, "step": 2, "tooltip": "Softens the mask edge, in pixels, so the seam does not show (0 = hard cut). Dilate then Gaussian, matching the LanPaint blend_overlap: the ramp sits OUTSIDE the mask you drew, so the inpainted content keeps full strength at its own edge."}),
+            },
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("images",)
+    CATEGORY = "MpiNodes/Utils"
+    DESCRIPTION = (
+        "Decode the video half of a MiniMax H3 AV latent and composite it back into "
+        "the original frames through the inpainting mask, which is what finishes the "
+        "job MpiH3EncodeAV starts. Everything outside the mask is the ORIGINAL pixel, "
+        "not a VAE round trip of it, so an inpaint does not quietly soften the whole "
+        "frame. The audio half is deliberately NOT decoded: the encode masks audio "
+        "all-keep, so the soundtrack that comes back is the one that went in and the "
+        "original AUDIO should be wired straight past this node to the combine. That "
+        "is also why there is no audio_vae input, and no audio cross-fade either: "
+        "nothing is spliced into the soundtrack, so there is no audio seam to hide. "
+        "`feather` is the video half of LanPaint's pair, dilate-then-Gaussian like "
+        "its blend_overlap."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, samples, vae, images, mask=None, mask_start=0, mask_end=-1, feather=11):
+        import torch
+
+        z_video, _ = _unpack_av(samples, "samples")
+        out = vae.decode(z_video)
+        if out.ndim == 5:  # [1, F, H, W, C]: fold the batch into the frames
+            out = out.reshape(-1, *out.shape[-3:])
+
+        # A VAE decode can round the canvas; the composite needs an exact match.
+        h, w = images.shape[1], images.shape[2]
+        if out.shape[1:3] != (h, w):
+            out = torch.nn.functional.interpolate(
+                out.movedim(-1, 1), size=(h, w), mode="bilinear", align_corners=False
+            ).movedim(1, -1)
+
+        if out.shape[0] != images.shape[0]:
+            raise ValueError(
+                f"The latent decodes to {out.shape[0]} frames but {images.shape[0]} "
+                "original frames were given. H3 only generates 17k+5 frames, so a "
+                "clip trimmed off that grid cannot round-trip - snap it with "
+                "MpiH3Length before encoding."
+            )
+
+        if mask is None:
+            return (out,)
+
+        m = place_mask(mask, images.shape[0], mask_start, mask_end).unsqueeze(1)
+        if feather > 1:
+            k = feather | 1  # an even kernel shifts the mask half a pixel sideways
+            # Dilate BEFORE smoothing, the way LanPaint's MaskBlend does. That puts
+            # the whole ramp OUTSIDE the mask that was drawn, so the inpainted
+            # content holds full strength right up to its own edge. Smoothing alone
+            # ramps inward as well and fades the new content back into the old,
+            # which reads as the inpaint not having taken at the boundary.
+            m = torch.nn.functional.max_pool2d(m, k, stride=1, padding=k // 2)
+            x = torch.arange(k, dtype=torch.float32) - k // 2
+            g = torch.exp(-(x ** 2) / (2 * ((k - 1) / 4) ** 2))
+            g = g / g.sum()
+            # Replicate, not zero, padding: a mask touching the frame edge - a
+            # subject walking out of shot - would otherwise be faded away there.
+            # Separable, so the cost is 2k rather than k*k per pixel.
+            m = torch.nn.functional.pad(m, (k // 2,) * 4, mode="replicate")
+            m = torch.nn.functional.conv2d(m, g.view(1, 1, k, 1))
+            m = torch.nn.functional.conv2d(m, g.view(1, 1, 1, k))
+        m = m.movedim(1, -1).to(out)  # [F, H, W, 1], broadcast over channels
+
+        return (images.to(out) * (1.0 - m) + out * m,)
 
 
 def _unpack_av(latent, name: str):
@@ -635,6 +819,17 @@ if __name__ == "__main__":
 
     assert collect_refs({})["packed"] == ({}, {}, {}, {})
     assert snap_h3_frames(96) == 90 and snap_h3_frames(5) == 5
+
+    # The packing walk pack_video_mask rides on. A step's span depends on its
+    # ABSOLUTE index, so walking forwards must agree with tail_span counting back;
+    # get this wrong and a mask lands on frames the user never painted.
+    assert frame_spans(1) == [(0, 1)]
+    assert frame_spans(6) == [(0, 1), (1, 5), (5, 9), (9, 13), (13, 17), (17, 18)]
+    for _t in (1, 5, 6, 12, 27):
+        assert frame_spans(_t)[-1][1] == tail_span(_t, _t), _t
+    # 39 frames -- the shortest valid context -- is 12 latent steps.
+    assert frame_spans(12)[-1][1] == 39
+    assert latent_frames(12) == 39 and latent_frames(0) == 0
 
     # --- masked prefix: the arithmetic that fails silently -----------------
     # The only context lengths on BOTH clocks. 39 / 90 / 141 are the ones the

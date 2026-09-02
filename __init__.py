@@ -100,7 +100,7 @@ from .multi_text import (
     MpiMultiTextX5,
 )
 from .wan import MpiWanFrames, MpiWanSeconds
-from .h3 import MpiH3EncodeAV, MpiH3Length, MpiH3MaskedPrefix, MpiH3References
+from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3Length, MpiH3MaskedPrefix, MpiH3References
 from .vram import MpiClearVram
 from .video import MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
 from .latent import MpiSaveLatent, MpiLoadLatent, MpiStageLatents, MpiLatentUpscale
@@ -208,6 +208,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiGridDimensions": MpiGridDimensions,
     "MpiWanFrames": MpiWanFrames,
     "MpiWanSeconds": MpiWanSeconds,
+    "MpiH3DecodeAV": MpiH3DecodeAV,
     "MpiH3EncodeAV": MpiH3EncodeAV,
     "MpiH3Length": MpiH3Length,
     "MpiH3MaskedPrefix": MpiH3MaskedPrefix,
@@ -324,6 +325,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiMaskDebugInfo": "Mpi Mask Debug Info",
     "MpiWanFrames": "Mpi Wan Frames",
     "MpiWanSeconds": "Mpi Wan Seconds",
+    "MpiH3DecodeAV": "Mpi H3 Decode AV",
     "MpiH3EncodeAV": "Mpi H3 Encode AV",
     "MpiH3Length": "Mpi H3 Length",
     "MpiH3MaskedPrefix": "Mpi H3 Masked Prefix",
