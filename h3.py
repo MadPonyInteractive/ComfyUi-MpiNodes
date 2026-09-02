@@ -629,6 +629,21 @@ class MpiH3EncodeAV:
 
         out = {"samples": comfy.nested_tensor.NestedTensor((video_z, audio_z))}
         if mask is not None:
+            # Only the inpainting path needs this: the mask and the composite in
+            # MpiH3DecodeAV are indexed in PIXEL frames, so the clip has to survive
+            # the round trip frame-for-frame. Off the grid the VAE packs what it can
+            # and drops the remainder without complaining -- 6 frames come back as 5
+            # - which then surfaces somewhere else entirely, or not at all. The
+            # context path (MpiH3MaskedPrefix) deliberately accepts off-grid clips,
+            # so this cannot be a check on every encode.
+            if images.shape[0] % 17 != 5:
+                raise ValueError(
+                    f"An inpaint needs a frame count on H3's 17k+5 grid, and "
+                    f"{images.shape[0]} is not one - the VAE would pack it to "
+                    f"{latent_frames(video_z.shape[2])} frames and drop the rest. "
+                    f"Use {snap_h3_frames(images.shape[0])} frames "
+                    f"(5, 22, 39, 56, 73, ...); MpiH3Length picks one for you."
+                )
             # The audio mask is zeros -- keep the whole soundtrack -- and it is sized
             # off the encoded audio latent itself, so nothing here needs a frame
             # count or a frame rate to get it right.
@@ -830,6 +845,17 @@ if __name__ == "__main__":
     # 39 frames -- the shortest valid context -- is 12 latent steps.
     assert frame_spans(12)[-1][1] == 39
     assert latent_frames(12) == 39 and latent_frames(0) == 0
+    # What the inpaint guard rests on. Two different constraints meet here and
+    # only one of them is the grid: the VAE round-trips more lengths than the
+    # MODEL accepts (1, 9, 13, 17, 18 ... all pack exactly), so `n % 17 == 5` is
+    # the stricter of the two and has to be a SUBSET of what packs exactly --
+    # otherwise the guard would pass a clip the decode then cannot line up.
+    _exact = {latent_frames(t) for t in range(1, 200)}
+    for _n in range(5, 400, 17):
+        assert _n in _exact, _n
+    # ...and the counts the guard rejects really are the ones that lose frames.
+    assert 6 not in _exact and latent_frames(2) == 5, 'a 6-frame clip packs to 5'
+    assert snap_h3_frames(6) == 5 and snap_h3_frames(56) == 56
 
     # --- masked prefix: the arithmetic that fails silently -----------------
     # The only context lengths on BOTH clocks. 39 / 90 / 141 are the ones the
