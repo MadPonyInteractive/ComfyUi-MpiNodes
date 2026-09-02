@@ -729,13 +729,18 @@ class MpiH3DecodeAV:
             # content holds full strength right up to its own edge. Smoothing alone
             # ramps inward as well and fades the new content back into the old,
             # which reads as the inpaint not having taken at the boundary.
-            m = torch.nn.functional.max_pool2d(m, k, stride=1, padding=k // 2)
+            # Max is separable too, and the k*k form was the whole cost of a wide
+            # feather: at k=61 that is 3721 comparisons per pixel, over every frame,
+            # which reads as a hung node rather than a slow one. Two 1-D passes are
+            # 2k = 122 and give a bit-identical result.
+            m = torch.nn.functional.max_pool2d(m, (k, 1), stride=1, padding=(k // 2, 0))
+            m = torch.nn.functional.max_pool2d(m, (1, k), stride=1, padding=(0, k // 2))
             x = torch.arange(k, dtype=torch.float32) - k // 2
             g = torch.exp(-(x ** 2) / (2 * ((k - 1) / 4) ** 2))
             g = g / g.sum()
             # Replicate, not zero, padding: a mask touching the frame edge - a
             # subject walking out of shot - would otherwise be faded away there.
-            # Separable, so the cost is 2k rather than k*k per pixel.
+            # Separable here as well, so the cost is 2k rather than k*k per pixel.
             m = torch.nn.functional.pad(m, (k // 2,) * 4, mode="replicate")
             m = torch.nn.functional.conv2d(m, g.view(1, 1, k, 1))
             m = torch.nn.functional.conv2d(m, g.view(1, 1, 1, k))
@@ -906,6 +911,16 @@ if __name__ == "__main__":
     # answer here; the node raises rather than picking a near-miss.
     assert plan_context(30, 90) == (0, 0, 0)
     assert 39 not in {tail_span(30, s) for s in range(1, 31)}
+
+    import torch
+
+    # the separable dilate must equal the k*k one it replaced, at every k
+    for _k in (3, 11, 61):
+        _m = (torch.rand(2, 1, 40, 50) > 0.85).float()
+        _sq = torch.nn.functional.max_pool2d(_m, _k, stride=1, padding=_k // 2)
+        _sep = torch.nn.functional.max_pool2d(_m, (_k, 1), stride=1, padding=(_k // 2, 0))
+        _sep = torch.nn.functional.max_pool2d(_sep, (1, _k), stride=1, padding=(0, _k // 2))
+        assert torch.equal(_sq, _sep), _k
 
     # place_mask: one mask covers the whole clip rather than frame 0 alone
     import torch
