@@ -520,3 +520,69 @@ class MpiAudioRange:
         i0 = min(total, round(s / fps * rate))
         i1 = min(total, round((e + 1) / fps * rate))
         return ({"waveform": waveform[..., i0:i1], "sample_rate": rate},)
+
+
+class MpiAudioSplice:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "audio": ("AUDIO", {"tooltip": "The clip's FULL soundtrack - the one MpiAudioRange was cut from."}),
+                "patch": ("AUDIO", {"tooltip": "The window to write back in, e.g. the audio output of MpiH3DecodeAV. Resampled to the full track's rate if it does not already match."}),
+                "fps": ("FLOAT", {"default": 24.0, "min": 0.01, "max": 1000.0, "step": 0.01, "tooltip": "Frame rate the start index is counted in. Wire the loader's own fps - a guessed rate slides the patch against the picture instead of failing."}),
+                "start": ("INT", {"default": 0, "min": -0xFFFFFFFFFFFFFFFF, "max": 0xFFFFFFFFFFFFFFFF, "tooltip": "Start FRAME (inclusive) the patch lands on. Negative counts from the end. Same convention as MpiListRange and MpiAudioRange, so the number that CUT the window writes it back."}),
+                "crossfade": ("INT", {"default": 50, "min": 0, "max": 2000, "tooltip": "Crossfade at each end of the patch, in milliseconds, ramped INSIDE the patch so the rest of the track is untouched. A hard splice clicks, and a click is the one artefact an audio edit cannot hide."}),
+            },
+        }
+
+    RETURN_TYPES = ("AUDIO",)
+    RETURN_NAMES = ("audio",)
+    CATEGORY = "MpiNodes/Video"
+    DESCRIPTION = (
+        "Write a run of audio back into a longer soundtrack at a FRAME offset - the "
+        "inverse of MpiAudioRange, and the sound half of what MpiImageSplice does for "
+        "picture. Windowed work on an audio-video model cuts both streams to a window, "
+        "generates, and has to splice both back; without this the picture returns "
+        "full-length while regenerated audio stays window-length, which reads as a "
+        "video whose sound stops early rather than as a wiring mistake. A patch "
+        "running past the end of the track raises rather than landing silently short."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, audio, patch, fps, start, crossfade):
+        import torch
+
+        from .h3 import splice_audio
+
+        waveform = audio["waveform"]
+        rate = audio["sample_rate"]
+        wave_p = patch["waveform"]
+        if patch["sample_rate"] != rate:
+            import torchaudio
+
+            wave_p = torchaudio.functional.resample(wave_p, patch["sample_rate"], rate)
+
+        total = waveform.shape[-1]
+        frames = max(1, round(total / rate * fps))
+        s = start + frames if start < 0 else start
+        s = max(0, min(s, frames - 1))
+        i0 = min(total, round(s / fps * rate))
+        i1 = i0 + wave_p.shape[-1]
+        if i1 > total:
+            raise ValueError(
+                f"A {wave_p.shape[-1]}-sample patch placed at frame {s} runs "
+                f"{i1 - total} samples past the end of a {total}-sample track. "
+                "Either start names a different window than the patch came from, "
+                "or the patch came from a different clip."
+            )
+
+        # splice_audio indexes both tensors in the SAME coordinates, so the patch is
+        # laid into a full-length buffer rather than the offset being threaded
+        # through it -- one allocation, and the crossfade stays the tested one.
+        if wave_p.shape[1] == 1 and waveform.shape[1] > 1:
+            wave_p = wave_p.expand(-1, waveform.shape[1], -1)
+        placed = torch.zeros_like(waveform[:1])
+        placed[..., i0:i1] = wave_p[:1].to(placed)
+        spliced = splice_audio(
+            waveform[:1], placed, i0, i1, int(rate * crossfade / 1000))
+        return ({"waveform": spliced, "sample_rate": rate},)

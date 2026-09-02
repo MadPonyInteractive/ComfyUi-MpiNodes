@@ -103,7 +103,7 @@ from .multi_text import (
 from .wan import MpiWanFrames, MpiWanSeconds
 from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3Length, MpiH3MaskedPrefix, MpiH3References
 from .vram import MpiClearVram
-from .video import MpiAudioRange, MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
+from .video import MpiAudioRange, MpiAudioSplice, MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
 from .latent import MpiSaveLatent, MpiLoadLatent, MpiStageLatents, MpiLatentUpscale
 from .preview import MpiVideoSamplingPreview, MpiTinyVaeLoader
 from .splat import MpiBrushTrain
@@ -217,6 +217,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiH3References": MpiH3References,
     "MpiClearVram": MpiClearVram,
     "MpiAudioRange": MpiAudioRange,
+    "MpiAudioSplice": MpiAudioSplice,
     "MpiHasAudio": MpiHasAudio,
     "MpiSaveVideo": MpiSaveVideo,
     "MpiLoadVideo": MpiLoadVideo,
@@ -336,6 +337,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiH3References": "Mpi H3 References",
     "MpiClearVram": "Mpi Clear Vram",
     "MpiAudioRange": "Mpi Audio Range",
+    "MpiAudioSplice": "Mpi Audio Splice",
     "MpiHasAudio": "Mpi Has Audio",
     "MpiSaveVideo": "Mpi Save Video",
     "MpiLoadVideo": "Mpi Load Video",
