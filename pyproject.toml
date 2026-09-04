@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUi-MpiNodes"
 description = """Multiple utilities for ComfyUI"""
-version = "1.2.9"
+version = "1.2.10"  # 1.2.10
 license = { file = "LICENSE" }
 
 [project.urls]

@@ -103,6 +103,32 @@ def _is_blank_image(image) -> bool:
     return shape[1] == 1 and shape[2] == 1
 
 
+def _cover_crop(image, width, height):
+    """Aspect-preserving centre cover-crop of [B, H, W, C] onto the target canvas.
+
+    Core's MiniMaxH3ImageToVideo is asymmetric: it resizes `first_frame` with
+    `crop='disabled'` -- a plain stretch, commented "geometry anchor"
+    (comfy_extras/nodes_minimax_h3.py:142) -- while `last_frame` gets `'center'`
+    (:148). So a 9:16 photo into a 1:1 canvas comes back squashed, and when both
+    frames are supplied they are conformed by two different rules and disagree
+    with each other.
+
+    Core has no source-patch mechanism, so conform BOTH here and hand it images
+    already at the canvas size -- its own resize then has nothing left to do.
+    Crop, never pad: letterbox bars would be baked into frame 0 and the model
+    animates them as scenery.
+    """
+    import comfy.utils  # lazy: this module must import without ComfyUI present
+
+    if image is None:
+        return None
+    if tuple(image.shape[1:3]) == (height, width):
+        return image
+    samples = image[..., :3].movedim(-1, 1)
+    samples = comfy.utils.common_upscale(samples, width, height, "lanczos", "center")
+    return samples.movedim(1, -1)
+
+
 def _is_blank_audio(audio) -> bool:
     """True for a missing input or the loaders' 1-sample silent sentinel."""
     if not isinstance(audio, dict):
@@ -357,6 +383,8 @@ class MpiH3ImageToVideo:
         "graph covers t2va, first-frame, last-frame and first+last instead of a branch per "
         "combination. An empty input means either nothing connected or an Mpi loader with "
         "block_if_empty OFF (a 1x1 image) - a real black frame is not mistaken for empty. "
+        "Both frames are cover-cropped to the canvas, so an off-aspect source is cropped "
+        "rather than squashed and the two keyframes agree with each other. "
         "The conditioning and the AV latent are built by core's own MiniMaxH3ImageToVideo, "
         "so its tensor maths stays the single source of truth."
     )
@@ -373,11 +401,18 @@ class MpiH3ImageToVideo:
                 "MiniMax H3 nodes are missing - MpiH3ImageToVideo needs ComfyUI 0.30.0 or newer."
             ) from exc
 
+        # Cover-crop both frames to the canvas BEFORE delegating -- see
+        # `_cover_crop` for why core cannot be trusted to do it symmetrically.
+        # Core slices [:1] itself; doing it here means resizing one frame, not a
+        # whole batch.
+        first = None if _is_blank_image(first_frame) else _cover_crop(first_frame[:1], width, height)
+        last = None if _is_blank_image(last_frame) else _cover_crop(last_frame[:1], width, height)
+
         output = MiniMaxH3ImageToVideo.execute(
             clip=clip, vae=vae, prompt=prompt,
             width=width, height=height, length=length,
-            first_frame=None if _is_blank_image(first_frame) else first_frame,
-            last_frame=None if _is_blank_image(last_frame) else last_frame,
+            first_frame=first,
+            last_frame=last,
         )
         cond, latent = output.result
         return (cond, latent)
@@ -1168,6 +1203,39 @@ if __name__ == "__main__":
     assert not _is_blank_image(_Img(1, 512)), "a 1px-tall strip is still real media"
     assert _is_blank_audio(BLANK_AUD) and _is_blank_audio(None)
     assert not _is_blank_audio(real_aud), "a silent-but-real clip must pass through"
+
+    # _cover_crop: the crop MODE is the whole point, so pin it. A regression to
+    # "disabled" here is exactly the core bug this wrapper exists to undo, and it
+    # is invisible in the graph -- it only shows up as a squashed frame 0.
+    import sys as _sys
+    import types as _types
+
+    _calls = []
+
+    class _Stub:
+        def __init__(self, h, w):
+            self.shape = (1, h, w, 3)
+        def __getitem__(self, _):
+            return self
+        def movedim(self, *_):
+            return self
+
+    _fake = _types.ModuleType("comfy.utils")
+    _fake.common_upscale = lambda s, w, h, m, crop: _calls.append((w, h, m, crop)) or _Stub(h, w)
+    _comfy_pkg = _sys.modules.get("comfy") or _types.ModuleType("comfy")
+    _comfy_pkg.utils = _fake
+    _sys.modules.setdefault("comfy", _comfy_pkg)
+    _sys.modules["comfy.utils"] = _fake
+
+    _out = _cover_crop(_Stub(1344, 768), 768, 768)   # 9:16 source into a square canvas
+    assert _calls == [(768, 768, "lanczos", "center")], _calls
+    assert _out.shape[1:3] == (768, 768)
+    # Already at size -> untouched, not a pointless lanczos round-trip.
+    _same = _Stub(768, 768)
+    assert _cover_crop(_same, 768, 768) is _same
+    assert _cover_crop(None, 768, 768) is None
+    assert len(_calls) == 1, "an at-size image must not be resized"
+    del _sys.modules["comfy.utils"]
 
     # Slots 2 and 3 used, 1 empty: the survivors must renumber to 0,1 and video 3's
     # soundtrack must follow it to index 1, not stay at 3.
