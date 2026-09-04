@@ -101,7 +101,7 @@ from .multi_text import (
     MpiMultiTextX5,
 )
 from .wan import MpiWanFrames, MpiWanSeconds
-from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3Length, MpiH3MaskedPrefix, MpiH3References
+from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3ImageToVideo, MpiH3Length, MpiH3MaskedPrefix, MpiH3References
 from .vram import MpiClearVram
 from .video import MpiAudioRange, MpiAudioSplice, MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
 from .latent import MpiSaveLatent, MpiLoadLatent, MpiStageLatents, MpiLatentUpscale
@@ -212,6 +212,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiWanSeconds": MpiWanSeconds,
     "MpiH3DecodeAV": MpiH3DecodeAV,
     "MpiH3EncodeAV": MpiH3EncodeAV,
+    "MpiH3ImageToVideo": MpiH3ImageToVideo,
     "MpiH3Length": MpiH3Length,
     "MpiH3MaskedPrefix": MpiH3MaskedPrefix,
     "MpiH3References": MpiH3References,
@@ -332,6 +333,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiWanSeconds": "Mpi Wan Seconds",
     "MpiH3DecodeAV": "Mpi H3 Decode AV",
     "MpiH3EncodeAV": "Mpi H3 Encode AV",
+    "MpiH3ImageToVideo": "Mpi H3 Image To Video",
     "MpiH3Length": "Mpi H3 Length",
     "MpiH3MaskedPrefix": "Mpi H3 Masked Prefix",
     "MpiH3References": "Mpi H3 References",

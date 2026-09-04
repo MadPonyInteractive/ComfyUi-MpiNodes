@@ -313,6 +313,77 @@ class MpiH3References:
 
 
 # ---------------------------------------------------------------------------
+# Image-to-video conditioning
+# ---------------------------------------------------------------------------
+#
+# Core's MiniMaxH3ImageToVideo already skips a keyframe when `first_frame` /
+# `last_frame` arrive as None -- but a graph cannot deliver None down a
+# connected link. So covering "did the user supply a first frame, a last frame,
+# both, or neither" costs one pre-authored branch per combination, which is what
+# the fl2va workflow was carrying: four copies of the core node behind a lattice
+# of booleans.
+#
+# Same fix as MpiH3References above: take both frames as always-present optional
+# inputs, drop the empty ones here, and DELEGATE the conditioning to the core
+# node. Empty means the same thing it means everywhere else in this pack --
+# nothing connected, or an Mpi loader with `block_if_empty` OFF emitting its 1x1
+# sentinel (`_is_blank_image`). A genuinely black first frame reports its true
+# size and passes through untouched.
+
+
+class MpiH3ImageToVideo:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "clip": ("CLIP",),
+                "vae": ("VAE",),
+                "prompt": ("STRING", {"multiline": True, "dynamicPrompts": True}),
+                "width": ("INT", {"default": 1344, "min": 32, "max": MAX_RESOLUTION, "step": 32}),
+                "height": ("INT", {"default": 768, "min": 32, "max": MAX_RESOLUTION, "step": 32}),
+                "length": ("INT", {"default": 124, "min": 5, "max": 3600, "step": 17, "tooltip": "Frame count at 24 fps (124 = ~5 s, trained range ~124-362). Feed it from MpiH3Length."}),
+            },
+            "optional": {
+                "first_frame": ("IMAGE", {"tooltip": "Geometry anchor at frame 0. Leave unconnected, or feed a loader with block_if_empty OFF, to skip it."}),
+                "last_frame": ("IMAGE", {"tooltip": "Follower at the final frame. Leave unconnected, or feed a loader with block_if_empty OFF, to skip it."}),
+            },
+        }
+
+    RETURN_TYPES = ("CONDITIONING", "LATENT")
+    RETURN_NAMES = ("positive", "latent")
+    CATEGORY = "MpiNodes/Utils"
+    DESCRIPTION = (
+        "MiniMax H3 image-to-video conditioning that tolerates empty frame inputs, so ONE "
+        "graph covers t2va, first-frame, last-frame and first+last instead of a branch per "
+        "combination. An empty input means either nothing connected or an Mpi loader with "
+        "block_if_empty OFF (a 1x1 image) - a real black frame is not mistaken for empty. "
+        "The conditioning and the AV latent are built by core's own MiniMaxH3ImageToVideo, "
+        "so its tensor maths stays the single source of truth."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, clip, vae, prompt, width, height, length,
+             first_frame=None, last_frame=None):
+        # Imported here, not at module scope: the pack must still load on a
+        # ComfyUI older than 0.30.0, where H3 does not exist at all.
+        try:
+            from comfy_extras.nodes_minimax_h3 import MiniMaxH3ImageToVideo  # type: ignore
+        except ImportError as exc:
+            raise RuntimeError(
+                "MiniMax H3 nodes are missing - MpiH3ImageToVideo needs ComfyUI 0.30.0 or newer."
+            ) from exc
+
+        output = MiniMaxH3ImageToVideo.execute(
+            clip=clip, vae=vae, prompt=prompt,
+            width=width, height=height, length=length,
+            first_frame=None if _is_blank_image(first_frame) else first_frame,
+            last_frame=None if _is_blank_image(last_frame) else last_frame,
+        )
+        cond, latent = output.result
+        return (cond, latent)
+
+
+# ---------------------------------------------------------------------------
 # Masked prefix -- continuing a clip without regenerating its tail
 # ---------------------------------------------------------------------------
 #
