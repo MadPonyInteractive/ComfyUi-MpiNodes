@@ -1,7 +1,7 @@
 [project]
 name = "ComfyUi-MpiNodes"
 description = """Multiple utilities for ComfyUI"""
-version = "1.2.8"
+version = "1.2.9"
 license = { file = "LICENSE" }
 
 [project.urls]
@@ -9,6 +9,7 @@ Repository = "https://github.com/MadPonyInteractive/ComfyUi-MpiNodes"
 #  Used by Comfy Registry https://registry.comfy.org
 
 [tool.comfy]
+# release 1.2.9
 PublisherId = "mad-pony-interactive"
 DisplayName = "ComfyUi-MpiNodes"
 Icon = ""
