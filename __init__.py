@@ -102,7 +102,8 @@ from .multi_text import (
 )
 from .wan import MpiWanFrames, MpiWanSeconds
 from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3ImageToVideo, MpiH3Length, MpiH3MaskedPrefix, MpiH3References
-from .vram import MpiClearVram
+from .vram import MpiClearVram, MpiClearVramEnd
+from .sampler import MpiWindowedSampler
 from .video import MpiAudioRange, MpiAudioSplice, MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
 from .latent import MpiSaveLatent, MpiLoadLatent, MpiStageLatents, MpiLatentUpscale
 from .preview import MpiVideoSamplingPreview, MpiTinyVaeLoader
@@ -217,6 +218,8 @@ NODE_CLASS_MAPPINGS = {
     "MpiH3MaskedPrefix": MpiH3MaskedPrefix,
     "MpiH3References": MpiH3References,
     "MpiClearVram": MpiClearVram,
+    "MpiClearVramEnd": MpiClearVramEnd,
+    "MpiWindowedSampler": MpiWindowedSampler,
     "MpiAudioRange": MpiAudioRange,
     "MpiAudioSplice": MpiAudioSplice,
     "MpiHasAudio": MpiHasAudio,
@@ -338,6 +341,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiH3MaskedPrefix": "Mpi H3 Masked Prefix",
     "MpiH3References": "Mpi H3 References",
     "MpiClearVram": "Mpi Clear Vram",
+    "MpiClearVramEnd": "Mpi Clear Vram End",
+    "MpiWindowedSampler": "Mpi Windowed Sampler",
     "MpiAudioRange": "Mpi Audio Range",
     "MpiAudioSplice": "Mpi Audio Splice",
     "MpiHasAudio": "Mpi Has Audio",
