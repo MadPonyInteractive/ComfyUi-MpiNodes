@@ -24,17 +24,83 @@ import latent_preview  # type: ignore
 from comfy.nested_tensor import NestedTensor  # type: ignore
 
 
-def plan_windows(total, window, overlap):
-    """Cover [0, total) with windows of `window` frames overlapping by `overlap`.
+def latent_to_frames(t, grid, ratio):
+    """Video frames a run of `t` latent frames carries.
+
+    H3 packs `(1, 4, 4, 4, 4)` video frames per latent frame, indexed by the
+    ABSOLUTE latent position mod 5 -- see `MiniMaxH3AV.fix_empty_latent` in
+    comfy/latent_formats.py. So every `grid`-th token is short and the rest carry
+    the model's `temporal_downscale_ratio`. Verified against the two clip lengths
+    this card has measured: T=37 -> 124 frames and T=22 -> 73.
+
+    With `grid=1` there is no packing model, so this is the identity and the
+    node's frame widgets are really counting latent frames. The info output says
+    which of the two happened rather than leaving it to be guessed.
+    """
+    return ratio * t - (ratio - 1) * -(-t // grid)
+
+
+def frames_to_latent(frames, grid, ratio, cap):
+    """Largest latent run of at most `cap` whose video length fits in `frames`.
+
+    Searched rather than inverted: the exact inverse has to round the same way
+    the ceiling above does, and a clip is a few dozen latent frames.
+    """
+    t = 0
+    while t < cap and latent_to_frames(t + 1, grid, ratio) <= frames:
+        t += 1
+    return t
+
+
+def plan_windows(total, window, overlap, grid=1):
+    """Cover [0, total) with windows of AT MOST `window` frames, overlapping.
+
+    `window` is a CEILING, not a target: it is the largest the card was measured
+    against, so once the pass count is fixed the windows shrink to the smallest
+    legal size that still covers. Same number of passes, fewer tokens in each.
+
+    `grid` is the model's temporal quantum, and it is not cosmetic. H3 patchifies
+    time as a 2-frame causal head plus blocks of 5, so a legal latent length is
+    5k+2 and a legal cut point is a multiple of 5. A window of 21 ends 4 frames
+    into a block; the trailing partial block is padded and decodes BLACK, which
+    reads as a blend artefact rather than as an illegal length. 27 (5*5+2) has no
+    partial block and is clean. `grid=1` means the model has no such constraint
+    and reduces this to plain fixed-size windows.
+
+    The grid beats the ceiling when the two disagree: the smallest tileable window
+    is one whole block plus the head (7 for H3), so a ceiling under that is raised
+    to it rather than honoured off-grid. An over-ceiling window risks an OOM; an
+    off-grid one is guaranteed black frames. The log line reports both numbers.
 
     The last window is pulled back to full width rather than left short, so every
-    window is the same size the card was measured against -- a runt final window
-    would be cheap, but a short window is not the failure mode worth guarding.
+    window is the same size the card was measured against.
     """
+    phase = total % grid  # 2 for a well-formed H3 clip; 0 when grid is 1
+    floor = grid + phase  # one whole block plus the head: the smallest tileable
+
+    def snap(n):
+        """Largest legal window length <= n."""
+        return max(floor, ((n - phase) // grid) * grid + phase)
+
+    def step_for(w):
+        """Stride for windows of `w`. Kept a multiple of `grid` so every window
+        STARTS on a legal cut point too, and never wider than `w` so no frame is
+        skipped. Rounding down only ever buys more overlap than was asked for."""
+        return max(grid, ((w - overlap) // grid) * grid)
+
+    window = snap(window)
     if window >= total:
         return [(0, total)]
 
-    step = max(1, window - overlap)
+    step = step_for(window)
+    passes = 1 + -(-(total - window) // step)
+
+    for candidate in range(floor, window + 1, grid):
+        candidate_step = step_for(candidate)
+        if candidate + (passes - 1) * candidate_step >= total:
+            window, step = candidate, candidate_step
+            break
+
     spans = []
     start = 0
     while True:
@@ -49,22 +115,32 @@ def plan_windows(total, window, overlap):
     return spans
 
 
-def _blend_weights(start, end, total, overlap, device, dtype):
-    """Linear ramp in, flat, linear ramp out -- but only on interior edges.
+def _edge_overlaps(spans, index):
+    """(lead, tail): frames this window ACTUALLY shares with each neighbour.
 
-    The clip's true first and last frames must keep full weight or the ends fade
-    toward whatever the accumulator was initialised with.
+    Not the requested overlap. Snapping the stride to the grid buys extra shared
+    frames, and ramping over the requested number instead would crossfade across
+    part of the shared region and hard-cut the rest -- a narrow fade between two
+    independently denoised windows is where a ghost shows up. The clip's true
+    first and last frames have no neighbour and so keep full weight, or the ends
+    fade toward whatever the accumulator was initialised with.
     """
+    start, end = spans[index]
     n = end - start
-    w = torch.ones(n, device=device, dtype=dtype)
-    if overlap <= 0:
-        return w
+    lead = spans[index - 1][1] - start if index > 0 else 0
+    tail = end - spans[index + 1][0] if index + 1 < len(spans) else 0
+    return max(0, min(lead, n)), max(0, min(tail, n))
 
-    ramp = min(overlap, n)
-    if start > 0:
-        w[:ramp] = torch.arange(1, ramp + 1, device=device, dtype=dtype) / (ramp + 1)
-    if end < total:
-        w[-ramp:] = torch.arange(ramp, 0, -1, device=device, dtype=dtype) / (ramp + 1)
+
+def _blend_weights(spans, index, device, dtype):
+    """Linear ramp in, flat, linear ramp out -- over the real shared regions."""
+    start, end = spans[index]
+    w = torch.ones(end - start, device=device, dtype=dtype)
+    lead, tail = _edge_overlaps(spans, index)
+    if lead > 0:
+        w[:lead] = torch.arange(1, lead + 1, device=device, dtype=dtype) / (lead + 1)
+    if tail > 0:
+        w[-tail:] = torch.arange(tail, 0, -1, device=device, dtype=dtype) / (tail + 1)
     return w
 
 
@@ -98,36 +174,55 @@ class MpiWindowedSampler:
                 "sampler": ("SAMPLER",),
                 "sigmas": ("SIGMAS",),
                 "latent_image": ("LATENT",),
-                "window": ("INT", {
-                    "default": 27, "min": 1, "max": 4096,
-                    "tooltip": "Latent frames sampled at once. Set it to the largest "
-                               "your card handles: 27 is what a 16GB card manages for "
-                               "MiniMax H3 at 2K. A clip at or under this size takes "
+                "window_frames": ("INT", {
+                    "default": 90, "min": 1, "max": 100000,
+                    "tooltip": "CEILING on the VIDEO frames refined at once, not a "
+                               "target. This is the number you discover by hitting an "
+                               "OOM: if 124 frames dies and 90 survives, put 90 here. "
+                               "90 is what a 16GB card manages for MiniMax H3 at 2K. "
+                               "Windows are then shrunk to the smallest legal size "
+                               "that still covers the clip in the same number of "
+                               "passes, so a generous ceiling costs nothing and a low "
+                               "one costs passes. A clip at or under this length takes "
                                "the plain single-pass path.",
                 }),
-                "overlap": ("INT", {
-                    "default": 4, "min": 0, "max": 256,
-                    "tooltip": "Latent frames shared between neighbouring windows and "
-                               "cross-faded. Costs compute on every seam, so raise it "
-                               "only if a seam is visible.",
+                "overlap_frames": ("INT", {
+                    "default": 17, "min": 0, "max": 100000,
+                    "tooltip": "MINIMUM VIDEO frames neighbouring windows share and "
+                               "cross-fade. Costs compute on every seam. 17 is one "
+                               "whole block for H3. Snapping to the grid can only ever "
+                               "hand you more than you ask for, never less.",
+                }),
+                "frame_grid": ("INT", {
+                    "default": 5, "min": 1, "max": 64,
+                    "tooltip": "ADVANCED - the model's temporal quantum, in LATENT "
+                               "frames. Leave it at 5 for MiniMax H3, which packs time "
+                               "as a 2-frame causal head plus blocks of 5; a window "
+                               "off that grid ends in a padded part-block that decodes "
+                               "BLACK. Set 1 for a model with no such structure, which "
+                               "gives plain fixed-size windows and makes the two "
+                               "widgets above count latent frames instead.",
                 }),
             },
         }
 
-    RETURN_TYPES = ("LATENT", "LATENT")
-    RETURN_NAMES = ("output", "denoised_output")
+    RETURN_TYPES = ("LATENT", "LATENT", "STRING")
+    RETURN_NAMES = ("output", "denoised_output", "info")
     CATEGORY = "MpiNodes/Sampling"
     DESCRIPTION = (
-        "Drop-in replacement for SamplerCustomAdvanced that samples the latent in "
+        "SamplerCustomAdvanced that samples the latent in "
         "overlapping temporal windows and cross-fades them, so a clip too long to "
         "sample in one pass still fits. Intended for a REFINE pass over an already "
         "coherent latent, not for first-pass generation. Audio in a joint AV latent "
         "is passed through untouched. Falls back to a single ordinary sample when "
-        "the clip already fits, so short clips are unchanged."
+        "the clip already fits, so short clips are unchanged. Both frame widgets are "
+        "in VIDEO frames, the unit an OOM is actually measured in, and the info "
+        "output reports what was planned."
     )
     FUNCTION = "doit"
 
-    def doit(self, noise, guider, sampler, sigmas, latent_image, window, overlap):
+    def doit(self, noise, guider, sampler, sigmas, latent_image, window_frames,
+             overlap_frames, frame_grid=5):
         latent = latent_image.copy()
         samples = comfy.sample.fix_empty_latent_channels(
             guider.model_patcher,
@@ -140,10 +235,16 @@ class MpiWindowedSampler:
         video, audio = _split_av(samples)
         total = video.shape[2]
 
-        if overlap >= window:
-            overlap = max(0, window - 1)
+        grid = max(1, frame_grid)
+        # The model itself says how many video frames a latent frame carries, so
+        # the widgets can be in the unit an OOM is actually measured in without
+        # asking the user for a second number.
+        ratio = getattr(getattr(guider.model_patcher.model, "latent_format", None),
+                        "temporal_downscale_ratio", 1)
+        window = max(1, frames_to_latent(window_frames, grid, ratio, total))
+        overlap = frames_to_latent(overlap_frames, grid, ratio, max(0, window - 1))
 
-        spans = plan_windows(total, window, overlap)
+        spans = plan_windows(total, window, overlap, grid)
         disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
 
         # One noise field for the whole clip, sliced per window. Generating noise
@@ -154,11 +255,27 @@ class MpiWindowedSampler:
         noise_video, noise_rest = _split_av(full_noise)
 
         if len(spans) == 1:
-            return self._sample_once(
+            info = (f"single pass: {total} latent frames "
+                    f"({latent_to_frames(total, grid, ratio)} video), at or under the "
+                    f"{window_frames}-frame ceiling, so nothing was windowed")
+            print(f"[MpiWindowedSampler] {info}")
+            out, out_denoised = self._sample_once(
                 guider, sampler, sigmas, latent, full_noise, noise.seed, disable_pbar)
+            return (out, out_denoised, info)
 
-        print(f"[MpiWindowedSampler] T={total} windows={len(spans)} "
-              f"window={window} overlap={overlap} spans={spans}")
+        # Every window is grid-aligned and equal length, so one conversion
+        # describes all of them.
+        planned = spans[0][1] - spans[0][0]
+        shared = spans[0][1] - spans[1][0]
+        info = (
+            f"{len(spans)} windows of {latent_to_frames(planned, grid, ratio)} video "
+            f"frames ({planned} latent), sharing "
+            f"{latent_to_frames(shared, grid, ratio)} video frames ({shared} latent). "
+            f"Clip is {latent_to_frames(total, grid, ratio)} video frames ({total} "
+            f"latent). You asked for a {window_frames}-frame ceiling and "
+            f"{overlap_frames} frames of overlap; grid {grid}, "
+            f"{ratio} video frames per latent frame. spans={spans}")
+        print(f"[MpiWindowedSampler] {info}")
 
         out_full = torch.zeros_like(video)
         weight_shape = [1] * video.ndim
@@ -198,8 +315,7 @@ class MpiWindowedSampler:
             result = result.to(comfy.model_management.intermediate_device())
 
             seg_out, _ = _split_av(result)
-            w = _blend_weights(start, end, total, overlap,
-                               out_full.device, out_full.dtype)
+            w = _blend_weights(spans, index, out_full.device, out_full.dtype)
             out_full[:, :, start:end] += seg_out.to(out_full.device) * w.view(weight_shape)
             weight_full[:, :, start:end] += w.view(weight_shape).to(torch.float32)
 
@@ -223,7 +339,7 @@ class MpiWindowedSampler:
         out["samples"] = _rejoin_av(out_full, audio)
 
         if x0_full is None:
-            return (out, out)
+            return (out, out, info)
 
         # process_latent_out is affine, so running it once on the blended x0 is the
         # same as blending per-window results -- and keeps one call, as core does.
@@ -232,7 +348,7 @@ class MpiWindowedSampler:
         out_denoised.pop("downscale_ratio_temporal", None)
         out_denoised["samples"] = _rejoin_av(
             guider.model_patcher.model.process_latent_out(x0_full.cpu()), audio)
-        return (out, out_denoised)
+        return (out, out_denoised, info)
 
     @staticmethod
     def _extract_x0(x0_output, result):
