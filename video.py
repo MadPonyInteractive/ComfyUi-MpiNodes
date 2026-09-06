@@ -370,7 +370,8 @@ class MpiSaveVideo:
             },
         }
 
-    RETURN_TYPES = ()
+    RETURN_TYPES = ("STRING",)
+    RETURN_NAMES = ("video_path",)
     OUTPUT_NODE = True
     CATEGORY = "MpiNodes/Video"
     DESCRIPTION = (
@@ -379,7 +380,10 @@ class MpiSaveVideo:
         "one libx264 pass, on the engine — much faster than CreateVideo+"
         "SaveVideo, and remote gens transfer only the final mp4, not the raw "
         "frames. Toggle audio with the use_audio boolean (wire audio straight "
-        "in, no if/else router). GPU-agnostic (no nvenc)."
+        "in, no if/else router). GPU-agnostic (no nvenc). Outputs the absolute "
+        "path of the written mp4, so work can be ordered AFTER the file exists "
+        "— hang an Mpi Clear Vram End off it and the VRAM clear stops costing "
+        "render time. The path also feeds Mpi Has Audio / Mpi Load Video."
     )
     FUNCTION = "doit"
 
@@ -472,9 +476,15 @@ class MpiSaveVideo:
             if wav_path and os.path.exists(wav_path):
                 os.remove(wav_path)
 
-        return {"ui": {"videos": [
-            {"filename": name, "subfolder": subfolder, "type": "output", "format": "video/mp4"}
-        ]}}
+        return {
+            "ui": {"videos": [
+                {"filename": name, "subfolder": subfolder, "type": "output", "format": "video/mp4"}
+            ]},
+            # Returned as well as shown, so a node can be ordered after the mp4
+            # exists. OUTPUT_NODE keeps the preview; "result" is what makes the
+            # path reachable downstream.
+            "result": (out_path,),
+        }
 
 
 class MpiAudioRange:
