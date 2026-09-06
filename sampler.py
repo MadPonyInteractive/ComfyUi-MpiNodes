@@ -162,6 +162,48 @@ def _rejoin_av(video, rest):
     return NestedTensor([video] + list(rest))
 
 
+def _audio_span(start, end, total, grid, ratio, ref_len):
+    """Audio token span [a0, a1) matching the video latent window [start, end).
+
+    Audio is NOT a global stream the model reads whole -- it is indexed in time
+    against the video. `MiniMaxH3AV.fix_empty_latent` sizes it
+    `round(frame_count * 5/3)`, so an audio token has a frame it belongs to, and
+    a window handed the WHOLE track is a window whose mouth is reading the wrong
+    moment. On a 124-frame clip planned as [(0,22),(15,37)] that is a ~2 s offset
+    in the second window, and it shows up as a mouth that sticks at the seam.
+
+    The rate is derived from the tensors rather than hardcoded as 5/3, so a model
+    with a different packing (or a future H3 revision) needs no change here.
+    Length is computed as the model would for a clip of this many frames and then
+    placed at the window's offset, so the slice is exactly the size a standalone
+    render of that window would have produced -- one frame short and the packed
+    layout no longer describes the tensor it was built for.
+    """
+    frames_total = latent_to_frames(total, grid, ratio)
+    if frames_total <= 0 or ref_len <= 0:
+        return 0, ref_len
+    rate = ref_len / frames_total
+    f0 = latent_to_frames(start, grid, ratio)
+    want = round((latent_to_frames(end, grid, ratio) - f0) * rate)
+    want = max(1, min(want, ref_len))
+    a0 = round(f0 * rate)
+    a1 = min(a0 + want, ref_len)
+    return a1 - want, a1
+
+
+def _slice_rest(rest, a0, a1, ref_len):
+    """Slice the audio side of an AV latent by its LAST (time) dim.
+
+    Only tensors whose last dim matches the reference length are touched; anything
+    else in the nested tuple is passed through, so a model carrying a non-temporal
+    extra stream is unaffected rather than silently mangled.
+    """
+    if rest is None:
+        return None
+    return tuple(t[..., a0:a1] if t.ndim >= 1 and t.shape[-1] == ref_len else t
+                 for t in rest)
+
+
 class MpiWindowedSampler:
     """SamplerCustomAdvanced, run over overlapping temporal windows."""
 
@@ -234,6 +276,9 @@ class MpiWindowedSampler:
 
         video, audio = _split_av(samples)
         total = video.shape[2]
+        # Reference length for the audio slice: every stream measured against the
+        # first one, so a mismatched extra tensor is passed through untouched.
+        audio_len = audio[0].shape[-1] if audio else 0
 
         grid = max(1, frame_grid)
         # The model itself says how many video frames a latent frame carries, so
@@ -291,13 +336,21 @@ class MpiWindowedSampler:
         for index, (start, end) in enumerate(spans):
             seg_latent = latent.copy()
             seg_video = video[:, :, start:end]
-            seg_latent["samples"] = _rejoin_av(seg_video, audio)
+            # The audio travels with its OWN window, not whole. It is conditioning
+            # here, not output -- the refined audio is discarded below and the
+            # original restored -- but handing the model the entire track against a
+            # sliced video misaligns every frame after the first window by that
+            # window's offset, and lip-sync is exactly that alignment.
+            a0, a1 = _audio_span(start, end, total, grid, ratio, audio_len)
+            seg_latent["samples"] = _rejoin_av(
+                seg_video, _slice_rest(audio, a0, a1, audio_len))
 
             mask = latent.get("noise_mask", None)
             if mask is not None:
                 seg_latent["noise_mask"] = self._slice_mask(mask, start, end, total)
 
-            seg_noise = _rejoin_av(noise_video[:, :, start:end], noise_rest)
+            seg_noise = _rejoin_av(noise_video[:, :, start:end],
+                                   _slice_rest(noise_rest, a0, a1, audio_len))
 
             x0_output = {}
             callback = latent_preview.prepare_callback(
@@ -414,3 +467,45 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiWindowedSampler": "Mpi Windowed Sampler",
 }
+
+
+if __name__ == "__main__":
+    # Self-check for the audio window. Run it with ComfyUI on sys.path, e.g.
+    #   python -c "import sys; sys.path.insert(0, r'<ComfyUI>'); \
+    #              exec(open(r'<this file>').read(), {'__name__': '__main__'})"
+    # The numbers are H3's real ones, taken from the case that exposed the bug:
+    # a 124-frame clip (T=37) planned as [(0, 22), (15, 37)], audio sized by
+    # MiniMaxH3AV as round(124 * 5/3) = 207 tokens.
+    G, R, TOTAL, REF = 5, 4, 37, 207
+    assert latent_to_frames(TOTAL, G, R) == 124, latent_to_frames(TOTAL, G, R)
+    assert latent_to_frames(22, G, R) == 73
+
+    full = _audio_span(0, TOTAL, TOTAL, G, R, REF)
+    assert full == (0, REF), f"a window covering the clip must take all the audio: {full}"
+
+    spans = [(0, 22), (15, 37)]
+    got = [_audio_span(s, e, TOTAL, G, R, REF) for s, e in spans]
+    assert got == [(0, 122), (85, 207)], got
+    # Equal-length windows must get equal-length audio, or the packed layout
+    # describes a different tensor in each pass.
+    lengths = {a1 - a0 for a0, a1 in got}
+    assert lengths == {122}, lengths
+    # The tail window has to reach the end of the track: dropping the last tokens
+    # would desync the closing frames, which is where a listener checks first.
+    assert got[-1][1] == REF, got[-1]
+    # And the offset has to advance with the window, which is the whole bug: the
+    # second window previously started at audio 0 like the first.
+    assert got[1][0] > got[0][0], got
+
+    # Degenerate inputs stay harmless rather than raising mid-render.
+    assert _audio_span(0, 0, 0, G, R, REF) == (0, REF)
+    assert _audio_span(0, TOTAL, TOTAL, G, R, 0) == (0, 0)
+
+    a = torch.zeros((1, 32, 2, REF))
+    other = torch.zeros((1, 8, 3))          # not time-shaped: must pass through
+    sliced = _slice_rest((a, other), 85, 207, REF)
+    assert sliced[0].shape[-1] == 122, sliced[0].shape
+    assert sliced[1] is other, "a non-matching stream must not be sliced"
+    assert _slice_rest(None, 0, 1, REF) is None
+
+    print("sampler self-check OK")
