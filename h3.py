@@ -93,7 +93,7 @@ MAX_REF_AUDIOS = 3
 MAX_RESOLUTION = 16384
 
 
-def _is_blank_image(image) -> bool:
+def is_blank_image(image) -> bool:
     """True for a missing input or the loaders' 1x1 empty-path sentinel."""
     if image is None:
         return True
@@ -156,7 +156,7 @@ def collect_refs(slots: dict) -> dict:
     images, image_slots = {}, []
     for i in range(1, MAX_REF_IMAGES + 1):
         image = slots.get(f"ref_image_{i}")
-        if _is_blank_image(image):
+        if is_blank_image(image):
             continue
         images[f"ref_image_{len(images)}"] = image
         image_slots.append(i)
@@ -164,7 +164,7 @@ def collect_refs(slots: dict) -> dict:
     videos, video_audios, video_slots = {}, {}, []
     for i in range(1, MAX_REF_VIDEOS + 1):
         frames = slots.get(f"ref_video_{i}")
-        if _is_blank_image(frames):
+        if is_blank_image(frames):
             continue
         index = len(videos)
         videos[f"ref_video_{index}"] = frames
@@ -353,7 +353,7 @@ class MpiH3References:
 # inputs, drop the empty ones here, and DELEGATE the conditioning to the core
 # node. Empty means the same thing it means everywhere else in this pack --
 # nothing connected, or an Mpi loader with `block_if_empty` OFF emitting its 1x1
-# sentinel (`_is_blank_image`). A genuinely black first frame reports its true
+# sentinel (`is_blank_image`). A genuinely black first frame reports its true
 # size and passes through untouched.
 
 
@@ -405,8 +405,8 @@ class MpiH3ImageToVideo:
         # `_cover_crop` for why core cannot be trusted to do it symmetrically.
         # Core slices [:1] itself; doing it here means resizing one frame, not a
         # whole batch.
-        first = None if _is_blank_image(first_frame) else _cover_crop(first_frame[:1], width, height)
-        last = None if _is_blank_image(last_frame) else _cover_crop(last_frame[:1], width, height)
+        first = None if is_blank_image(first_frame) else _cover_crop(first_frame[:1], width, height)
+        last = None if is_blank_image(last_frame) else _cover_crop(last_frame[:1], width, height)
 
         output = MiniMaxH3ImageToVideo.execute(
             clip=clip, vae=vae, prompt=prompt,
@@ -1199,8 +1199,8 @@ if __name__ == "__main__":
     BLANK_IMG, BLANK_AUD = _Img(1, 1), _audio(1)
     real_img, real_aud = _Img(512, 512), _audio(240000)
 
-    assert _is_blank_image(BLANK_IMG) and _is_blank_image(None)
-    assert not _is_blank_image(_Img(1, 512)), "a 1px-tall strip is still real media"
+    assert is_blank_image(BLANK_IMG) and is_blank_image(None)
+    assert not is_blank_image(_Img(1, 512)), "a 1px-tall strip is still real media"
     assert _is_blank_audio(BLANK_AUD) and _is_blank_audio(None)
     assert not _is_blank_audio(real_aud), "a silent-but-real clip must pass through"
 
