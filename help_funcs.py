@@ -299,6 +299,17 @@ def aspect_ratio(width, height):
     return closest[0]
 
 
+def pick_from_batch(batch, index):
+    """One item out of a batch of anything (IMAGE, MASK, LATENT), keeping the
+    batch dimension. Negative indices count from the end (-1 is the last). The
+    index is CLAMPED rather than raising, which suits a preview path: an
+    out-of-range frame should show the nearest one, not kill a graph the user
+    is in the middle of debugging."""
+    n = batch.shape[0]
+    i = index if index >= 0 else n + index
+    return batch[max(0, min(i, n - 1)):][:1]
+
+
 def load_lora_cached(lora_name):
     if lora_name == "None":
         return None

@@ -1,5 +1,5 @@
 import torch  # type:ignore
-from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple, crop_offset
+from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple, crop_offset, pick_from_batch
 import math
 import os
 import numpy as np  # type: ignore
@@ -143,6 +143,120 @@ class MpiMaskDebugInfo:
         print("  Dtype:", dtype_str)
         print("  Device:", device_str)
         return (shape_str, dtype_str, device_str)
+
+
+class MpiMaskPreview(PreviewImage):
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "destination": ("IMAGE",),
+                "mask": ("MASK",),
+                "color": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 0xFFFFFF,
+                        "step": 1,
+                        "display": "color",
+                        "tooltip": "Colour painted through the mask.",
+                    },
+                ),
+                "invert_mask": (
+                    "BOOLEAN",
+                    {
+                        "default": False,
+                        "tooltip": "Off: paint where the mask is white. On: paint where it is black.",
+                    },
+                ),
+                "alpha": (
+                    "FLOAT",
+                    {
+                        "default": 0.70,
+                        "min": 0.0,
+                        "max": 1.0,
+                        "step": 0.01,
+                        "tooltip": "Paint opacity. 1.0 hides the plate under the mask; lower shows it through, which is how you check what the mask is sitting on.",
+                    },
+                ),
+                "index": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": -0xFFFFFFFFFFFFFFFF,
+                        "max": 0xFFFFFFFFFFFFFFFF,
+                        "tooltip": "Which frame of a batch to show. Negative counts from the end (-1 is the last). Out of range clamps to the nearest frame.",
+                    },
+                ),
+            },
+            "hidden": {
+                "prompt": "PROMPT",
+                "extra_pnginfo": "EXTRA_PNGINFO",
+            },
+        }
+
+    CATEGORY = "MpiNodes/Debug"
+    DESCRIPTION = (
+        "See where a MASK lands on an image, in one node. Paints a flat colour "
+        "through the mask onto destination and previews the result in-graph — "
+        "the job that otherwise needs Empty Image + Image Composite Masked + "
+        "Preview Image wired up every time. No source, no x/y and no "
+        "resize_source: this is a debug view, not a compositor. index picks ONE "
+        "frame out of a batch, so a clip does not render a thumbnail per frame; "
+        "a mask batch of 1 is treated as one mask for the whole clip. A mask at "
+        "a different resolution is resampled NEAREST, so a blocky mask still "
+        "looks blocky here rather than being smoothed into looking correct."
+    )
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    OUTPUT_NODE = True
+    FUNCTION = "preview"
+
+    def preview(
+        self,
+        destination,
+        mask,
+        color,
+        invert_mask,
+        alpha,
+        index,
+        prompt=None,
+        extra_pnginfo=None,
+    ):
+        # Empty batch: nothing to preview. Block downstream instead of IndexError.
+        if destination.shape[0] == 0 or mask.shape[0] == 0:
+            return {"ui": {"images": []}, "result": (ExecutionBlocker(None),)}
+
+        image = pick_from_batch(destination, index)
+
+        # A mask batch of 1 is one mask meant for the whole clip; any other
+        # count is per-frame and is indexed alongside the picture.
+        m = mask.unsqueeze(0) if mask.dim() == 2 else mask
+        if m.shape[0] != 1:
+            m = pick_from_batch(m, index)
+
+        _, h, w, _ = image.shape
+        if tuple(m.shape[-2:]) != (h, w):
+            m = torch.nn.functional.interpolate(
+                m.unsqueeze(1), size=(h, w), mode="nearest-exact"
+            ).squeeze(1)
+
+        m = m.to(image.device, image.dtype).clamp(0.0, 1.0)
+        if invert_mask:
+            m = 1.0 - m
+
+        rgb = torch.tensor(
+            [((color >> 16) & 0xFF) / 0xFF, ((color >> 8) & 0xFF) / 0xFF, (color & 0xFF) / 0xFF],
+            device=image.device,
+            dtype=image.dtype,
+        ).view(1, 1, 1, 3)
+
+        a = (m * alpha).unsqueeze(-1)
+        out = image * (1.0 - a) + rgb * a
+
+        preview = self.save_images(out, prompt=prompt, extra_pnginfo=extra_pnginfo)
+        return {"ui": preview["ui"], "result": (out,)}
 
 
 class MpiBboxToMask:

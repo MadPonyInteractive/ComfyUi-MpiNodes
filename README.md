@@ -119,6 +119,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | **MpiBoxMask** | Build a mask the size of the image — black with a white rectangle at the `MPI_BOX` region. Outputs the mask plus the clamped box actually drawn. |
 | **MpiInpaintHeal** | Heal an inpainted region against the real pixels around it — corrects colour drift and restores fine grain by matching a ring of untouched pixels hugging the mask. Unlike a colour-match on a rectangular crop, the ring never contains the removed object, so it cannot pull the fill toward it. Run after stitching. |
 | **MpiMaskDebugInfo** | Print mask shape, dtype, and device info to the console for debugging. |
+| **MpiMaskPreview** | See where a `MASK` lands on an image, in one node — paints a flat `color` through the mask onto `destination` and previews it in-graph, instead of wiring `Empty Image` + `Image Composite Masked` + `Preview Image` every time. `invert_mask` swaps which side is painted; `alpha` fades the paint so you can see the plate under it, which is the whole point of looking. No `source`, no x/y and no `resize_source` — a debug view, not a compositor. `index` picks **one** frame out of a batch (negative counts from the end, out of range clamps), so a 124-frame clip does not render 124 thumbnails; a mask batch of 1 is treated as one mask for the whole clip. A mask at a different resolution is resampled **nearest**, so a blocky mask still looks blocky here rather than being smoothed into looking correct. |
 | **MpiAddImageToList** | Append an image to a list of images. |
 
 ---
