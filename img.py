@@ -3,6 +3,7 @@ from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple, 
 import math
 import os
 import numpy as np  # type: ignore
+import scipy.ndimage  # type: ignore
 from PIL import Image, ImageOps  # type: ignore
 from comfy_execution.graph import ExecutionBlocker  # type: ignore
 from nodes import PreviewImage  # type: ignore
@@ -821,6 +822,109 @@ def square_bbox_from_mask(mask, padding=0):
     return x, y, side
 
 
+def _snap_up(value, divisor, limit):
+    """Smallest multiple of `divisor` that is >= value, capped at `limit`.
+
+    Grows and never shrinks, because the box exists to CONTAIN the mask and a
+    snap downward would slice pixels off the thing being measured. When the
+    grown size overruns the image the largest multiple that still fits is used;
+    when the image is smaller than `divisor` no multiple fits at all and the
+    image dimension is returned, which is the honest maximum - the alternative
+    is a zero-sized crop. divisor < 2 disables the snap.
+    """
+    if divisor < 2:
+        return min(value, limit)
+    out = ((value + divisor - 1) // divisor) * divisor
+    if out > limit:
+        out = (limit // divisor) * divisor
+    return out if out > 0 else limit
+
+
+def bbox_from_mask(mask, padding=0, divisible_by=1):
+    """Tight bbox of the mask's nonzero pixels, padded, snapped to a multiple of
+    `divisible_by`, re-centred on the tight box and clamped inside the image.
+    mask: (H, W) tensor. Returns (x, y, w, h) ints, or None if the mask is empty."""
+    H, W = mask.shape
+    ys, xs = torch.where(mask > 0)
+    if ys.numel() == 0:
+        return None
+
+    x_min = max(0, int(xs.min()) - padding)
+    y_min = max(0, int(ys.min()) - padding)
+    x_max = min(W, int(xs.max()) + 1 + padding)
+    y_max = min(H, int(ys.max()) + 1 + padding)
+
+    w = _snap_up(x_max - x_min, divisible_by, W)
+    h = _snap_up(y_max - y_min, divisible_by, H)
+
+    # Re-centre on the tight box so the growth is shared between both edges, then
+    # clamp into the image. Centring rather than growing right/down keeps the
+    # subject in the middle of the crop, which is what every consumer of the box
+    # assumes when it composites the result back.
+    x = int(round((x_min + x_max) / 2 - w / 2))
+    y = int(round((y_min + y_max) / 2 - h / 2))
+    x = max(0, min(x, W - w))
+    y = max(0, min(y, H - h))
+
+    return x, y, w, h
+
+
+class MpiMaskBbox:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mask": ("MASK",),
+                "padding": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 4096,
+                        "tooltip": "Pixels added around the tight mask box, before divisible_by.",
+                    },
+                ),
+                "divisible_by": (
+                    "INT",
+                    {
+                        "default": 1,
+                        "min": 1,
+                        "max": 512,
+                        "tooltip": "Round width and height UP to a multiple of this. 1 = off.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("MASK", "MPI_BOX", "INT", "INT")
+    RETURN_NAMES = ("mask", "mpi_box", "width", "height")
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = (
+        "Tight RECTANGULAR bounding box around a mask, as an MPI_BOX plus width and "
+        "height. The mask is passed through UNTOUCHED - unlike MpiMaskSquareBbox, which "
+        "squares the box and hands back a filled block where the mask was. That is the "
+        "difference that matters for crop-and-composite: one wire crops the plate by the "
+        "box and composites back through the real mask shape. divisible_by rounds width "
+        "and height UP to a multiple and re-centres, for a consumer that needs its "
+        "dimensions on a grid. On a batch - a video mask - the box is the UNION of every "
+        "frame, so the crop holds still for the whole clip instead of crawling. An empty "
+        "mask gives a zero box rather than raising."
+    )
+    FUNCTION = "compute"
+
+    def compute(self, mask, padding, divisible_by):
+        # Union across frames and one box for the whole clip, the same rule
+        # MpiMaskSquareBbox follows and for the same reason: a per-frame box crawls,
+        # and a crawling crop seam is far more visible in motion than a fixed one.
+        batch = mask if mask.dim() == 3 else mask.unsqueeze(0)
+        box = bbox_from_mask(batch.amax(0), padding, divisible_by)
+        if box is None:
+            return (mask, (0, 0, 0, 0), 0, 0)
+
+        x, y, w, h = box
+        return (mask, (x, y, w, h), w, h)
+
+
 class MpiMaskSquareBbox:
     @classmethod
     def INPUT_TYPES(cls):
@@ -870,6 +974,65 @@ class MpiMaskSquareBbox:
         x, y, size = box
         out[:, y:y + size, x:x + size] = 1.0
         return (out, x, y, size)
+
+
+class MpiMaskFillHoles:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mask": ("MASK",),
+                "max_hole_size": (
+                    "INT",
+                    {
+                        "default": 0,
+                        "min": 0,
+                        "max": 4096 * 4096,
+                        "step": 64,
+                        "tooltip": "Largest hole to fill, in PIXELS OF AREA. 0 fills every enclosed hole.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("MASK",)
+    RETURN_NAMES = ("mask",)
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = (
+        "Fill enclosed holes in a mask. SAM3 routinely drops the lips and teeth out "
+        "of a 'face' or 'head' mask, leaving a hole a composite then paints straight "
+        "through. Unlike a grow/shrink close this only touches pixels the mask already "
+        "surrounds, so the outer silhouette is untouched and no gap gets welded shut. "
+        "max_hole_size caps it by area - leave it at 0 for a face, raise it off 0 when "
+        "the mask has a legitimate hole such as the triangle between an arm and a torso. "
+        "A hole is not a bite: an open mouth that reaches the jaw line breaks the "
+        "silhouette instead of being enclosed, and no fill can reach it - add 'mouth' to "
+        "the SAM3 vocabulary for that."
+    )
+    FUNCTION = "compute"
+
+    def compute(self, mask, max_hole_size):
+        # Per frame. scipy would happily run on the whole (B, H, W) block, but it
+        # would treat the batch axis as a connectivity dimension and leak holes
+        # between frames - frame 12's hole plugged because frame 11 was solid there.
+        batch = mask if mask.dim() == 3 else mask.unsqueeze(0)
+        out = []
+        for m in batch:
+            solid = (m > 0.5).cpu().numpy()
+            holes = scipy.ndimage.binary_fill_holes(solid) & ~solid
+            if max_hole_size > 0 and holes.any():
+                lab, _ = scipy.ndimage.label(holes)
+                sizes = np.bincount(lab.ravel())
+                # Label 0 is everything that is NOT a hole. On a small image its
+                # count can fall under the cap, and indexing it back in would fill
+                # the whole frame - so put it out of reach rather than trust area.
+                sizes[0] = max_hole_size + 1
+                holes = (sizes <= max_hole_size)[lab]
+            plug = torch.from_numpy(holes).to(device=m.device, dtype=m.dtype)
+            # maximum, not a boolean or: a feathered edge keeps its soft values and
+            # only the holes are driven to 1.0.
+            out.append(torch.maximum(m, plug))
+        return (torch.stack(out, dim=0),)
 
 
 def _box_blur(img, radius):
