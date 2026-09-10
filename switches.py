@@ -215,7 +215,8 @@ class MpiUnpacker:
             print(
                 f"[MpiNodes] Mpi Unpacker: pack holds {len(pack)} slots but this "
                 f"node only has {self._count} outputs — slots "
-                f"{self._count + 1}-{len(pack)} were dropped. Use Mpi Unpacker 10."
+                f"{self._count + 1}-{len(pack)} were dropped. Use an unpacker with "
+                f"at least {len(pack)} outputs."
             )
         return tuple(
             pack[i] if i < len(pack) and pack[i] is not None else ExecutionBlocker(None)
@@ -233,6 +234,18 @@ class MpiUnpacker10(MpiUnpacker):
     RETURN_TYPES = (AlwaysEqualProxy("*"),) * 10
     RETURN_NAMES = tuple(f"any_{i}" for i in range(1, 11))
     DESCRIPTION = "Same as Mpi Unpacker with 10 outputs instead of 5"
+
+
+class MpiPacker2(MpiPacker):
+    _count = 2
+    DESCRIPTION = "Same as Mpi Packer with 2 slots instead of 5"
+
+
+class MpiUnpacker2(MpiUnpacker):
+    _count = 2
+    RETURN_TYPES = (AlwaysEqualProxy("*"),) * 2
+    RETURN_NAMES = ("any_1", "any_2")
+    DESCRIPTION = "Same as Mpi Unpacker with 2 outputs instead of 5"
 
 
 class MpiComparePacks:

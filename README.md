@@ -92,6 +92,8 @@ Route any type of input to a selected output by index.
 | **MpiUnpacker** | Unpack an `MPI_PACK` back into 5 outputs, in the same slot order they were packed. Slots that were empty block execution downstream, so nothing runs on a missing value. |
 | **MpiPacker10** | Same as MpiPacker with 10 slots instead of 5. |
 | **MpiUnpacker10** | Same as MpiUnpacker with 10 outputs instead of 5. Feeding a 10-slot pack into the 5-slot MpiUnpacker drops the tail and logs a warning. |
+| **MpiPacker2** | Same as MpiPacker with 2 slots instead of 5 — the pair case (width + height, image + mask) without three empty sockets. |
+| **MpiUnpacker2** | Same as MpiUnpacker with 2 outputs instead of 5. A longer pack drops its tail and logs a warning naming how many outputs are needed. |
 | **MpiComparePacks** | Compare two packs slot by slot. Outputs `equal` (true only if every slot matches) and `first_diff`, the 1-based slot of the first mismatch (0 when equal). Images and other tensors compare by content, and nested packs compare all the way down — this is the pack-safe alternative to MpiCompare, which raises on tensors. |
 | **MpiStringInvSwitch** | Route a string input to one of up to 5 outputs. |
 
@@ -103,7 +105,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 | Node | Description |
 |---|---|
 | **MpiScaledDimensions** | Scale image dimensions proportionally to a target size (use_max or use_min side). Returns width, height, is_portrait boolean, and the image resized to those dimensions (upscale_method selects the interpolation). |
-| **MpiAspectRatio** | Calculate aspect ratio from width/height (returns 1:1, 4:3, 3:2, 16:9, 9:16, 2:3, 3:4). |
+| **MpiAspectRatio** | Calculate aspect ratio from width/height. Outputs `string` (1:1, 4:3, 3:2, 16:9, 9:16, 2:3, 3:4) and `pack`, a 2-slot `MPI_PACK` carrying width then height on one wire — MpiUnpacker2 gives them back in that order. |
 | **MpiGetImageAtIndex** | Return the image at a specified index from a batch. Supports negative indexing (-1 = last). |
 | **MpiBboxToMask** | Convert bounding boxes (xyxy or xywh format) to mask tensors. |
 | **MpiGridDimensions** | Calculate grid dimensions and corrected source size for perfect tiling — avoids repeated tiles when fed to UltimateSDUpscale. Has auto mode. |

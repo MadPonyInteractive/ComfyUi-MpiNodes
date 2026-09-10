@@ -207,13 +207,17 @@ class MpiAspectRatio:
         }
 
     CATEGORY = "MpiNodes/ImgOps"
-    DESCRIPTION = "Calculate aspect ratio from width and height"
-    RETURN_TYPES = ("STRING",)
-    RETURN_NAMES = ("ratio",)
+    DESCRIPTION = (
+        "Calculate aspect ratio from width and height. Also emits width and "
+        "height as a 2-slot MPI_PACK so the dimensions travel on one wire — "
+        "Mpi Unpacker 2 gives them back in that order."
+    )
+    RETURN_TYPES = ("STRING", "MPI_PACK")
+    RETURN_NAMES = ("string", "pack")
     FUNCTION = "check"
 
     def check(self, width: int, height: int):
-        return (aspect_ratio(width, height),)
+        return (aspect_ratio(width, height), [width, height])
 
 
 class MpiScaledDimensions:

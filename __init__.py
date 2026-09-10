@@ -77,6 +77,8 @@ from .switches import (
     MpiUnpacker,
     MpiPacker10,
     MpiUnpacker10,
+    MpiPacker2,
+    MpiUnpacker2,
     MpiComparePacks,
 )
 from .loras import (
@@ -171,6 +173,8 @@ NODE_CLASS_MAPPINGS = {
     "MpiUnpacker": MpiUnpacker,
     "MpiPacker10": MpiPacker10,
     "MpiUnpacker10": MpiUnpacker10,
+    "MpiPacker2": MpiPacker2,
+    "MpiUnpacker2": MpiUnpacker2,
     "MpiComparePacks": MpiComparePacks,
     "MpiDoubleLora": MpiDoubleLora,
     "MpiLoraModel": MpiLoraModel,
@@ -295,6 +299,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiUnpacker": "Mpi Unpacker",
     "MpiPacker10": "Mpi Packer 10",
     "MpiUnpacker10": "Mpi Unpacker 10",
+    "MpiPacker2": "Mpi Packer 2",
+    "MpiUnpacker2": "Mpi Unpacker 2",
     "MpiComparePacks": "Mpi Compare Packs",
     "MpiDoubleLora": "Mpi Double Lora Loader",
     "MpiLoraModel": "Mpi Lora Model",
