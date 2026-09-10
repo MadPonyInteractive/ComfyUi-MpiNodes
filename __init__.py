@@ -104,7 +104,7 @@ from .multi_text import (
 )
 from .wan import MpiWanFrames, MpiWanSeconds
 from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3ImageToVideo, MpiH3Length, MpiH3MaskedPrefix, MpiH3References
-from .bernini import MpiBerniniConditioning
+from .bernini import MpiBerniniConditioning, MpiBerniniLength
 from .vram import MpiClearVram, MpiClearVramEnd
 from .sampler import MpiWindowedSampler
 from .video import MpiAudioRange, MpiAudioSplice, MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
@@ -223,6 +223,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiH3MaskedPrefix": MpiH3MaskedPrefix,
     "MpiH3References": MpiH3References,
     "MpiBerniniConditioning": MpiBerniniConditioning,
+    "MpiBerniniLength": MpiBerniniLength,
     "MpiClearVram": MpiClearVram,
     "MpiClearVramEnd": MpiClearVramEnd,
     "MpiWindowedSampler": MpiWindowedSampler,
@@ -349,6 +350,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiH3MaskedPrefix": "Mpi H3 Masked Prefix",
     "MpiH3References": "Mpi H3 References",
     "MpiBerniniConditioning": "Mpi Bernini Conditioning",
+    "MpiBerniniLength": "Mpi Bernini Length",
     "MpiClearVram": "Mpi Clear Vram",
     "MpiClearVramEnd": "Mpi Clear Vram End",
     "MpiWindowedSampler": "Mpi Windowed Sampler",

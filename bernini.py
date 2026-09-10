@@ -52,6 +52,42 @@ def effective_length(length: int) -> int:
     return 4 * ((max(1, int(length)) - 1) // 4) + 1
 
 
+class MpiBerniniLength:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "frames": ("INT", {"default": 81, "min": 1, "max": 8192, "tooltip": "Frame count you have - wire a loader's frame_count straight in."}),
+            },
+            "optional": {
+                "fps": ("FLOAT", {"default": 16.0, "min": 0.01, "max": 1000.0, "step": 0.01, "tooltip": "Only used to report seconds. Wire the loader's own fps."}),
+            },
+        }
+
+    RETURN_TYPES = ("INT", "FLOAT", "BOOLEAN")
+    RETURN_NAMES = ("length", "seconds", "on_grid")
+    CATEGORY = "MpiNodes/Utils"
+    DESCRIPTION = (
+        "Snap a frame count to the one Bernini can actually return, before anything "
+        "is sampled. Core builds ((length-1)//4)+1 latent frames and the VAE decodes "
+        "4 apiece, so a request off the 4n+1 grid comes back SHORT and nothing says "
+        "so - 48 frames in, 45 out. That surfaces downstream as an inpaint stitch "
+        "refusing two different frame counts, which points nowhere near the "
+        "conditioning. Feed this ONE number to both the conditioning node's length "
+        "and whatever trims the plate, and the two cannot disagree. "
+        "Deliberately a separate node rather than an output on MpiBerniniConditioning: "
+        "the plate is UPSTREAM of that node's source_video, so reading the count off "
+        "it would close a dependency cycle the graph cannot execute. Same reason "
+        "MpiH3Length is its own node. `on_grid` is false when the input had to be "
+        "snapped, so a graph can surface that instead of silently losing frames."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, frames, fps=16.0):
+        length = effective_length(frames)
+        return (length, length / fps if fps else 0.0, length == int(frames))
+
+
 class MpiBerniniConditioning:
     @classmethod
     def INPUT_TYPES(cls):
@@ -74,8 +110,8 @@ class MpiBerniniConditioning:
             "optional": optional,
         }
 
-    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT", "INT")
-    RETURN_NAMES = ("positive", "negative", "latent", "length")
+    RETURN_TYPES = ("CONDITIONING", "CONDITIONING", "LATENT")
+    RETURN_NAMES = ("positive", "negative", "latent")
     CATEGORY = "MpiNodes/Utils"
     DESCRIPTION = (
         "Bernini-R in-context conditioning with every reference slot exposed at "
@@ -88,10 +124,11 @@ class MpiBerniniConditioning:
         "mistaken for empty. The task is inferred from what survives, exactly as "
         "core documents it: nothing = t2v, source = v2v, source + refs = rv2v, "
         "refs alone = r2v, source + reference video = ads2v. The conditioning is "
-        "built by core's own BerniniConditioning. Also reports the frame count "
-        "you will actually get back, which core snaps to a 4n+1 grid silently - "
-        "feed it to the node that trims the plate so a stitch downstream is not "
-        "handed two different frame counts."
+        "built by core's own BerniniConditioning. Feed `length` from "
+        "MpiBerniniLength: core returns 4n+1 frames and says nothing when it "
+        "snaps, and the plate has to be trimmed to the SAME number - which this "
+        "node cannot report, because the plate is upstream of its own "
+        "source_video and reading the count off here would close a cycle."
     )
     FUNCTION = "doit"
 
@@ -149,6 +186,11 @@ if __name__ == "__main__":
     assert effective_length(4) == 1
     # never below one frame, whatever it is handed
     assert effective_length(0) == 1 and effective_length(-10) == 1
+    # the node wrapping it agrees, and flags whether it had to snap
+    length, seconds, on_grid = MpiBerniniLength().doit(48, fps=16.0)
+    assert (length, on_grid) == (45, False), (length, on_grid)
+    assert abs(seconds - 45 / 16.0) < 1e-9
+    assert MpiBerniniLength().doit(49, fps=16.0)[2] is True
     # what it reports is exactly what core's latent maths decodes back to
     for n in range(1, 400):
         assert effective_length(n) == 4 * (((n - 1) // 4) + 1 - 1) + 1, n
