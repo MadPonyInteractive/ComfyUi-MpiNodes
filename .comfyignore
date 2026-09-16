@@ -1,0 +1,15 @@
+# Trims the Comfy Registry zip to runtime files. comfy-cli packs git-tracked
+# files minus these patterns (gitignore syntax). Every shipped file is scanner
+# surface, prose included, so dev-only files stay out of the artifact.
+
+# Self-checks and WIP nodes (intentionally not registered in __init__.py)
+check_splat.py
+test_dummy.py
+subgraph_test.py
+dynamic_combo.py
+
+# Repo tooling
+/.github/
+*.code-workspace
+.comfyignore
+node.zip

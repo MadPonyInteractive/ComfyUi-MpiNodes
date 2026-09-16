@@ -549,7 +549,7 @@ def plan_audio_window(start, end, frames, audio_steps):
     return f0 * AUDIO_LATENT_FPS // FPS_I, a1, f0, f1
 
 
-_RANGE_RE = __import__("re").compile(r"^(\d+)\s*(?:-\s*(-?\d+))?$")
+_RANGE_RE = re.compile(r"^(\d+)\s*(?:-\s*(-?\d+))?$")
 
 
 def parse_audio_ranges(spec, frames, audio_steps):

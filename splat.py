@@ -1,9 +1,10 @@
 """Gaussian-splat training nodes.
 
 `MpiBrushTrain` shells out to Brush (github.com/ArthurBrussee/brush, Apache-2.0)
-to turn a COLMAP dataset into a trained `.ply`. Brush is a native binary, fetched
-per-platform on first use and checksum-verified — the same shape SplatKit already
-uses for its `colmap_sphere` SfM binary.
+to turn a COLMAP dataset into a trained `.ply`. Brush is a native binary that the
+user installs by hand into `<pack>/bin/brush-<version>/`; the node never downloads
+it and never executes a path typed into the graph (the Comfy Registry reads either
+as code execution - see `.claude/rules/registry-safety.md`).
 
 Two runtime facts drive the odd bits of this file, both measured rather than
 assumed (Cubric Vision MPI-623, Phase 0):
@@ -23,17 +24,12 @@ import os
 import platform
 import shutil
 import subprocess
-import tarfile
 import tempfile
 import time
-import urllib.request
-import zipfile
 
 import folder_paths  # type: ignore
 import comfy.utils  # type: ignore
 import comfy.model_management as mm  # type: ignore
-
-from .help_funcs import sha256_file
 
 
 BRUSH_VERSION = "v0.3.0"
@@ -41,8 +37,8 @@ BRUSH_RELEASE_URL = "https://github.com/ArthurBrussee/brush/releases/download"
 
 # asset, sha256, binary name inside the archive. These are the checksums published
 # beside each asset; the Windows one was re-verified against a downloaded copy.
-# Pinned here rather than fetched at runtime — a checksum served from the same host
-# as the payload proves nothing about that host.
+# Kept so the install error can tell the user what to download and what hash the
+# archive must have - the node itself never fetches anything.
 BRUSH_ASSETS = {
     "win_amd64": (
         "brush-app-x86_64-pc-windows-msvc.zip",
@@ -90,60 +86,31 @@ def _find_binary(root, name):
 
 
 def ensure_brush(override=""):
-    """Return a path to the Brush binary, downloading and verifying it once.
+    """Return the path to the Brush binary, which the user installs by hand.
 
-    `override` short-circuits everything, so an installer that manages the binary
-    itself — or a bench with a copy already on disk — never reaches the network.
+    Nothing is downloaded and no path from the graph is executed as given: the
+    registry reviewer reads a node that fetches a binary and runs it as
+    download-and-execute, and a widget naming an arbitrary executable as code
+    execution. So the binary lives in ONE fixed place, `<pack>/bin/brush-<version>/`,
+    and `override` is reduced to a file name looked up inside that folder.
     """
-    if override:
-        if not os.path.isfile(override):
-            raise FileNotFoundError(f"brush_path does not exist: {override}")
-        return override
-
     key = _platform_key()
     if key is None:
         raise RuntimeError(
             f"Brush publishes no prebuilt binary for {platform.system()} "
-            f"{platform.machine()}. Build it from source and pass brush_path."
+            f"{platform.machine()}. Build it from source and put it in {_brush_dir()}."
         )
 
     asset, expected_sha, exe_name = BRUSH_ASSETS[key]
+    name = os.path.basename((override or "").strip().strip('"')) or exe_name
     target_dir = _brush_dir()
-    existing = _find_binary(target_dir, exe_name)
-    if existing:
-        return existing
-
-    os.makedirs(target_dir, exist_ok=True)
-    archive = os.path.join(target_dir, asset)
-    url = f"{BRUSH_RELEASE_URL}/{BRUSH_VERSION}/{asset}"
-    print(f"[MpiNodes] downloading Brush {BRUSH_VERSION} ({asset}) — this happens once")
-    urllib.request.urlretrieve(url, archive)
-
-    actual_sha = sha256_file(archive)
-    if actual_sha != expected_sha:
-        os.remove(archive)
-        raise RuntimeError(
-            f"Brush checksum mismatch for {asset}: expected {expected_sha}, "
-            f"got {actual_sha}. The download was discarded."
-        )
-
-    if asset.endswith(".zip"):
-        with zipfile.ZipFile(archive) as zf:
-            zf.extractall(target_dir)
-    else:
-        with tarfile.open(archive) as tf:
-            tf.extractall(target_dir)
-    os.remove(archive)
-
-    binary = _find_binary(target_dir, exe_name)
+    binary = _find_binary(target_dir, name)
     if not binary:
-        raise RuntimeError(f"{asset} did not contain {exe_name}")
-    if os.name != "nt":
-        os.chmod(binary, 0o755)
-    # Apache-2.0 §4(a): the licence travels with the binary. Brush 0.3.0 ships no
-    # NOTICE file, so extracting LICENSE alongside discharges the obligation.
-    if not os.path.isfile(os.path.join(target_dir, "LICENSE")):
-        print(f"[MpiNodes] warning: Brush LICENSE not found in {target_dir}")
+        raise FileNotFoundError(
+            f"Brush is not installed: download {asset} from "
+            f"{BRUSH_RELEASE_URL}/{BRUSH_VERSION} (sha256 {expected_sha}), "
+            f"extract it into {target_dir} and run again."
+        )
     return binary
 
 
@@ -229,8 +196,9 @@ class MpiBrushTrain:
     CATEGORY = "MpiNodes/Splat"
     DESCRIPTION = (
         "Trains a Gaussian splat from a COLMAP dataset with Brush and returns the "
-        "path of the exported .ply. Brush is downloaded and checksum-verified on "
-        "first use; set brush_path to use a copy you manage yourself. A 30000-step "
+        "path of the exported .ply. Install Brush yourself into "
+        "custom_nodes/ComfyUi-MpiNodes/bin/brush-v0.3.0/ (nothing is downloaded); "
+        "brush_path is only a file name inside that folder. A 30000-step "
         "bake takes tens of minutes — a scene is a durable asset, not a generation."
     )
 

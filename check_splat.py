@@ -98,24 +98,26 @@ try:
 finally:
     shutil.rmtree(root, ignore_errors=True)
 
-# --- the override path must never reach the network, and must reject a bad path.
-exe = r"G:\MPI-623-spike\brush\extracted\brush_app.exe"
+# --- Brush is user-installed: nothing is downloaded, and brush_path is only a file
+#     name inside <pack>/bin/brush-<version>/, never a path executed as given.
 try:
     splat.ensure_brush(os.path.join(tempfile.gettempdir(), "nope-does-not-exist.exe"))
-    raise SystemExit("FAIL: a missing brush_path must raise")
-except FileNotFoundError:
-    print("ok  a missing brush_path raises instead of silently downloading")
+    raise SystemExit("FAIL: a missing Brush must raise")
+except FileNotFoundError as e:
+    assert splat._brush_dir() in str(e), str(e)
+    print("ok  a missing Brush raises and names the install folder, no download")
 
 assert splat._platform_key() == "win_amd64"
 asset, sha, name = splat.BRUSH_ASSETS["win_amd64"]
 assert sha == "b68e3e9cf052d51bf3ee30776fa5a364de7f2ba13b58443128ff797bb7bcfcd6"
 print("ok  platform key + pinned checksum")
 
+exe = os.path.join(splat._brush_dir(), name)
 if os.path.isfile(exe):
-    assert splat.ensure_brush(exe) == exe
-    print("ok  override returns the bench binary, no download")
+    assert splat.ensure_brush(r"G:\anywhere\else\brush_app.exe") == exe
+    print("ok  brush_path is reduced to a name inside the install folder")
 else:
-    print("--  bench binary absent, override-hit case not exercised")
+    print("--  Brush not installed, install-folder lookup not exercised")
 
 
 # --- the train() poll loop, with a fake process standing in for Brush. This is the
@@ -146,7 +148,8 @@ class FakeBrush:
 node = splat.MpiBrushTrain()
 ds = tempfile.mkdtemp(prefix="splattrain-")
 os.makedirs(os.path.join(ds, "sparse", "0"))
-real_popen, real_sleep = splat.subprocess.Popen, splat.time.sleep
+real_popen, real_sleep, real_ensure = splat.subprocess.Popen, splat.time.sleep, splat.ensure_brush
+splat.ensure_brush = lambda override="": exe  # the trainer is faked below, no binary needed
 bars = []
 splat.comfy.utils.ProgressBar = lambda total: bars.append(_PBar(total)) or bars[-1]
 splat.time.sleep = lambda s: None
@@ -195,7 +198,7 @@ try:
         assert killed["p"].returncode == -9, "the trainer process must be killed"
         print("ok  an interrupted prompt kills the trainer")
 finally:
-    splat.subprocess.Popen, splat.time.sleep = real_popen, real_sleep
+    splat.subprocess.Popen, splat.time.sleep, splat.ensure_brush = real_popen, real_sleep, real_ensure
     shutil.rmtree(ds, ignore_errors=True)
 
 print("\nall checks passed")

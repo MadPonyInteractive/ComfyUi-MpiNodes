@@ -331,16 +331,6 @@ def wrap_in_underscores(s):
     return f"_{cleaned}_" if cleaned else ""
 
 
-def sha256_file(path, chunk_size=1024 * 1024):
-    # Hex SHA-256 of a file, read in chunks — the binaries this verifies are
-    # hundreds of MB and must never be slurped into memory whole.
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(chunk_size), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def pick_seeded_item(items, seed):
     # Picks an item from a list
     random.seed(seed)
@@ -406,6 +396,35 @@ def merge_unique_by_key(list1, list2, key="title"):
     seen_titles = {d[key] for d in list1}
     combined = list1 + [d for d in list2 if d[key] not in seen_titles]
     return combined
+
+
+def resolve_in_comfy_dir(path, kinds=("input", "output", "temp")):
+    """Resolve a user-typed path to a real path inside ComfyUI's own folders.
+
+    A relative path is taken under the FIRST kind; an absolute path is accepted
+    only when it already lives under one of them. Anything else returns None.
+    This is the containment the registry reviewer requires: /prompt takes a
+    workflow with no auth, so a free path widget must never reach the rest of
+    the host (the 1.2.4-1.2.12 verdicts, see .claude/rules/registry-safety.md).
+    """
+    text = (path or "").strip().strip('"')
+    if not text:
+        return None
+    getters = {
+        "input": comfy_paths.get_input_directory,
+        "output": comfy_paths.get_output_directory,
+        "temp": comfy_paths.get_temp_directory,
+    }
+    bases = [os.path.realpath(getters[k]()) for k in kinds]
+    candidate = text if os.path.isabs(text) else os.path.join(bases[0], text)
+    real = os.path.realpath(candidate)
+    for base in bases:
+        try:
+            if os.path.commonpath([base, real]) == base:
+                return real
+        except ValueError:  # different drives on Windows
+            pass
+    return None
 
 
 def resolve_video_path(path):

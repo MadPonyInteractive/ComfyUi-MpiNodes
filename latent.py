@@ -6,6 +6,8 @@ import comfy.utils  # type: ignore
 import folder_paths  # type: ignore
 from comfy_execution.graph import ExecutionBlocker  # type: ignore
 
+from .help_funcs import resolve_in_comfy_dir
+
 
 LATENT_SUBFOLDER = "latents"
 
@@ -13,8 +15,8 @@ LATENT_SUBFOLDER = "latents"
 def _latent_path(filename: str, search_input: bool = False):
     """Resolve a latent filename to an absolute .latent path.
 
-    Absolute paths pass through; a bare name resolves against
-    `<output>/latents/` — same convention as MpiHasAudio's video_path.
+    An absolute path is honoured only inside ComfyUI's output/ or input/
+    folders; a bare name resolves against `<output>/latents/`.
     Returns None for an empty name.
 
     `search_input=True` (load only) checks the engine `input/` dir FIRST and
@@ -30,7 +32,12 @@ def _latent_path(filename: str, search_input: bool = False):
     if not name.lower().endswith(".latent"):
         name += ".latent"
     if os.path.isabs(name):
-        return name
+        # Only inside ComfyUI's own folders: an absolute path from /prompt is an
+        # arbitrary file read/write under the registry's policy. Anywhere else
+        # falls through to the basename rule.
+        inside = resolve_in_comfy_dir(name, ("output", "input"))
+        if inside:
+            return inside
     # basename() so a typed "../../foo" cannot escape the latents folder
     base = os.path.basename(name)
     if search_input:

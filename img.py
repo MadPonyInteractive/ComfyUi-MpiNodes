@@ -1,5 +1,5 @@
 import torch  # type:ignore
-from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple, crop_offset, pick_from_batch
+from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple, crop_offset, pick_from_batch, resolve_in_comfy_dir
 import math
 import os
 import numpy as np  # type: ignore
@@ -470,7 +470,7 @@ class MpiLoadImageFromPath(PreviewImage):
                     {
                         "default": "",
                         "multiline": False,
-                        "tooltip": "Image file path. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
+                        "tooltip": "Image file path, relative to ComfyUI's input/ folder (an absolute path must be inside input/, output/ or temp/). Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
                     },
                 ),
                 "channel": (
@@ -502,12 +502,16 @@ class MpiLoadImageFromPath(PreviewImage):
         "Load an image from a file path and preview it in-graph. Also outputs "
         "width and height. If the path is empty/missing, downstream execution is "
         "blocked (no need for a separate blocker node) unless block_if_empty is "
-        "off, in which case it outputs a blank 1x1 image so the graph continues."
+        "off, in which case it outputs a blank 1x1 image so the graph continues. "
+        "The path is resolved inside ComfyUI's input/, output/ or temp/ folders; "
+        "anything outside is treated as missing."
     )
     FUNCTION = "load"
 
     def load(self, string, channel="alpha", block_if_empty=True, prompt=None, extra_pnginfo=None):
-        path = (string or "").strip()
+        # Contained like core LoadImage: a free path read from /prompt is an
+        # arbitrary file read under the registry's policy.
+        path = resolve_in_comfy_dir(string)
         if not path or not os.path.isfile(path):
             if block_if_empty:
                 blocked = ExecutionBlocker(None)

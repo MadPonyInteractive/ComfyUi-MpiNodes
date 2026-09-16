@@ -1,10 +1,16 @@
 import os
 import unicodedata
 
+from .help_funcs import resolve_in_comfy_dir
+
 
 class MpiBatchTextReplace:
     CATEGORY = "MpiNodes/TextOps"
-    DESCRIPTION = "Batch find and replace text in all .txt files within a folder"
+    DESCRIPTION = (
+        "Batch find and replace text in all .txt files within a folder. "
+        "input_folder is read under ComfyUI's input/ (or output/) folder and "
+        "output_folder is written under output/; a path outside them is refused."
+    )
     RETURN_TYPES = ("STRING", "STRING")
     RETURN_NAMES = ("status", "output_folder")
     FUNCTION = "process"
@@ -23,16 +29,24 @@ class MpiBatchTextReplace:
     def process(
         self, input_folder, output_folder, find_string, replace_string
     ):
-        if not os.path.exists(input_folder):
-            raise ValueError(f"Input folder does not exist: {input_folder}")
-        if not os.path.exists(output_folder):
-            os.makedirs(output_folder)
+        # Contained to ComfyUI's own folders: a free output path plus makedirs
+        # and a write is an arbitrary file write from /prompt (registry verdict
+        # on 1.2.4 / 1.2.5).
+        src = resolve_in_comfy_dir(input_folder, ("input", "output"))
+        if not src or not os.path.isdir(src):
+            raise ValueError(
+                f"input_folder must be a folder inside ComfyUI's input/ or output/: {input_folder}"
+            )
+        dst = resolve_in_comfy_dir(output_folder, ("output",))
+        if not dst:
+            raise ValueError(f"output_folder must be inside ComfyUI's output/: {output_folder}")
+        os.makedirs(dst, exist_ok=True)
 
         count = 0
-        for filename in os.listdir(input_folder):
+        for filename in os.listdir(src):
             if filename.lower().endswith(".txt"):
-                input_path = os.path.join(input_folder, filename)
-                output_path = os.path.join(output_folder, filename)
+                input_path = os.path.join(src, filename)
+                output_path = os.path.join(dst, filename)
 
                 # Try reading with UTF-8, fallback to cp1252
                 try:
@@ -52,7 +66,7 @@ class MpiBatchTextReplace:
 
                 count += 1
 
-        return (f"Processed {count} file(s)", output_folder)
+        return (f"Processed {count} file(s)", dst)
 
 
 # NODE_CLASS_MAPPINGS = {"MpiBatchTextReplace": MpiBatchTextReplace}

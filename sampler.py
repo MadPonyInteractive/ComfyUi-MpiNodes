@@ -471,8 +471,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 
 if __name__ == "__main__":
     # Self-check for the audio window. Run it with ComfyUI on sys.path, e.g.
-    #   python -c "import sys; sys.path.insert(0, r'<ComfyUI>'); \
-    #              exec(open(r'<this file>').read(), {'__name__': '__main__'})"
+    #   python -c "import sys, runpy; sys.path.insert(0, r'<ComfyUI>'); \
+    #              runpy.run_path(r'<this file>', run_name='__main__')"
     # The numbers are H3's real ones, taken from the case that exposed the bug:
     # a 124-frame clip (T=37) planned as [(0, 22), (15, 37)], audio sized by
     # MiniMaxH3AV as round(124 * 5/3) = 207 tokens.

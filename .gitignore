@@ -9,5 +9,5 @@ memory.md
 # MPI-kanban local artifact — not part of the pack
 .mpi_node_commit
 
-# Brush is downloaded per-platform at runtime by MpiBrushTrain and checksum-verified.
+# Brush is installed here by hand for MpiBrushTrain (bin/brush-<version>/); never shipped.
 bin/
