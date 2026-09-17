@@ -1,5 +1,5 @@
 import torch  # type:ignore
-from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple, crop_offset, pick_from_batch, resolve_in_comfy_dir, resolve_input_file, list_input_files, picked_name, PICKER_STRING_INPUT
+from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple, crop_offset, pick_from_batch, resolve_in_comfy_dir, resolve_input_file, picker_choices, picked_names, PICKER_STRING_INPUT
 import math
 import os
 import numpy as np  # type: ignore
@@ -534,10 +534,13 @@ IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff")
 
 
 def _chosen_image(string, image):
-    """Contained path of the chosen image, or None when it is empty, outside
-    ComfyUI's folders or not an image extension."""
-    path = resolve_input_file(picked_name(image, string))
-    return path if path and path.lower().endswith(IMAGE_EXTS) else None
+    """Contained path of the first loadable image (string, then picker), or
+    None when neither is an existing image file inside ComfyUI's folders."""
+    for name in picked_names(image, string):
+        path = resolve_input_file(name)
+        if path and path.lower().endswith(IMAGE_EXTS) and os.path.isfile(path):
+            return path
+    return None
 
 
 class MpiLoadImage(MpiLoadImageFromPath):
@@ -547,10 +550,10 @@ class MpiLoadImage(MpiLoadImageFromPath):
         req = types["required"]
         types["required"] = {
             "image": (
-                list_input_files(IMAGE_EXTS),
+                picker_choices(IMAGE_EXTS),
                 {
                     "image_upload": True,
-                    "tooltip": "Pick, drop or paste an image; it is uploaded into ComfyUI's input/ folder.",
+                    "tooltip": "Pick, drop or paste an image; it is uploaded into ComfyUI's input/ folder. Used when string is empty or does not load; None picks nothing.",
                 },
             ),
             "channel": req["channel"],
@@ -563,9 +566,10 @@ class MpiLoadImage(MpiLoadImageFromPath):
     DESCRIPTION = (
         "Load an image like the built-in Load Image (pick, drag-and-drop or "
         "paste; the file is uploaded into ComfyUI's input/ folder) and preview "
-        "it in-graph. Wire a STRING into `string` and the wire decides instead: "
-        "a path inside input/, output/ or temp/, and an EMPTY string counts as "
-        "nothing loaded. Also outputs width and height, and channel picks the "
+        "it in-graph. `string` (a file name inside input/, with its subfolder) "
+        "is tried first, so an app can inject the file there; if it is empty or "
+        "does not load, the picked file is used. Nothing is loaded only when "
+        "both fail (picker on None). Also outputs width and height, and channel picks the "
         "mask source. Nothing loaded blocks downstream execution unless "
         "block_if_empty is off (then a blank 1x1 image); loaded is false either "
         "way and is never blocked."
@@ -577,12 +581,12 @@ class MpiLoadImage(MpiLoadImageFromPath):
         # blocks at run time instead of failing validation.
         return True
 
-    def load(self, image=None, channel="alpha", block_if_empty=True, string=None, prompt=None, extra_pnginfo=None):
+    def load(self, image=None, channel="alpha", block_if_empty=True, string="", prompt=None, extra_pnginfo=None):
         path = _chosen_image(string, image)
         return super().load(path or "", channel, block_if_empty, prompt, extra_pnginfo)
 
     @classmethod
-    def IS_CHANGED(cls, image=None, string=None, **kwargs):
+    def IS_CHANGED(cls, image=None, string="", **kwargs):
         path = _chosen_image(string, image)
         if not path or not os.path.isfile(path):
             return "missing"

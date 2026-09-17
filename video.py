@@ -8,8 +8,8 @@ from .help_funcs import (
     find_ffmpeg,
     video_has_audio_stream,
     resolve_input_file,
-    list_input_files,
-    picked_name,
+    picker_choices,
+    picked_names,
     PICKER_STRING_INPUT,
 )
 
@@ -298,10 +298,10 @@ class MpiLoadVideoUpload(MpiLoadVideo):
             # Required: the frontend only attaches the upload button to a
             # required combo.
             "video": (
-                list_input_files(VIDEO_EXTS),
+                picker_choices(VIDEO_EXTS),
                 {
                     "video_upload": True,
-                    "tooltip": "Pick a video, or use the upload button / drag-and-drop; the file is uploaded into ComfyUI's input/ folder.",
+                    "tooltip": "Pick a video, or use the upload button / drag-and-drop; the file is uploaded into ComfyUI's input/ folder. Used when string is empty or does not load; None picks nothing.",
                 },
             ),
             "block_if_empty": types["required"]["block_if_empty"],
@@ -313,9 +313,10 @@ class MpiLoadVideoUpload(MpiLoadVideo):
     DESCRIPTION = (
         "Mpi Load Video with a file picker and an upload button (the file is "
         "uploaded into ComfyUI's input/ folder, like the built-in Load Video). "
-        "Wire a STRING into `string` and the wire decides instead: a path inside "
-        "input/, output/ or temp/, and an EMPTY string counts as nothing loaded. "
-        "Same outputs as Mpi Load Video, including loaded, which is false "
+        "`string` (a file name inside input/, with its subfolder) is tried first, "
+        "so an app can inject the file there; if it is empty or does not load, "
+        "the picked file is used. Nothing is loaded only when both fail (picker "
+        "on None). Same outputs as Mpi Load Video, including loaded, which is false "
         "(never blocked) when nothing was decoded."
     )
 
@@ -325,8 +326,14 @@ class MpiLoadVideoUpload(MpiLoadVideo):
         # blocks at run time instead of failing validation.
         return True
 
-    def load(self, video=None, block_if_empty=True, force_rate=0.0, string=None):
-        return super().load(picked_name(video, string), block_if_empty, force_rate)
+    def load(self, video=None, block_if_empty=True, force_rate=0.0, string=""):
+        # A name that is not a readable video returns fast, so trying the
+        # string before the picker costs nothing unless the string loads.
+        for name in picked_names(video, string):
+            result = super().load(name, block_if_empty, force_rate)
+            if result[-1]:
+                return result
+        return self._empty(block_if_empty)
 
 
 class MpiLoadAudio:
@@ -397,10 +404,10 @@ class MpiLoadAudioUpload(MpiLoadAudio):
             # upload extension looks for. web/MpiLoadAudioUpload.js adds the
             # player widget it needs, which core adds only to its own nodes.
             "audio": (
-                list_input_files(AUDIO_EXTS),
+                picker_choices(AUDIO_EXTS),
                 {
                     "audio_upload": True,
-                    "tooltip": "Pick an audio (or video) file, or use the upload button / drag-and-drop; the file is uploaded into ComfyUI's input/ folder.",
+                    "tooltip": "Pick an audio (or video) file, or use the upload button / drag-and-drop; the file is uploaded into ComfyUI's input/ folder. Used when string is empty or does not load; None picks nothing.",
                 },
             ),
             "block_if_empty": types["required"]["block_if_empty"],
@@ -412,9 +419,10 @@ class MpiLoadAudioUpload(MpiLoadAudio):
     DESCRIPTION = (
         "Mpi Load Audio with a file picker, a player and an upload button (the "
         "file is uploaded into ComfyUI's input/ folder, like the built-in Load "
-        "Audio). Reads the audio track of video files too. Wire a STRING into "
-        "`string` and the wire decides instead: a path inside input/, output/ or "
-        "temp/, and an EMPTY string counts as nothing loaded. Outputs audio and "
+        "Audio). Reads the audio track of video files too. `string` (a file name "
+        "inside input/, with its subfolder) is tried first, so an app can inject "
+        "the file there; if it is empty or does not load, the picked file is used. "
+        "Nothing is loaded only when both fail (picker on None). Outputs audio and "
         "loaded, which is false (never blocked) when no audio was read."
     )
 
@@ -422,8 +430,12 @@ class MpiLoadAudioUpload(MpiLoadAudio):
     def VALIDATE_INPUTS(cls, audio=None):
         return True  # same reason as MpiLoadVideoUpload
 
-    def load(self, audio=None, block_if_empty=True, string=None):
-        return super().load(picked_name(audio, string), block_if_empty)
+    def load(self, audio=None, block_if_empty=True, string=""):
+        for name in picked_names(audio, string):
+            result = super().load(name, block_if_empty)
+            if result[-1]:
+                return result
+        return self._empty(block_if_empty)
 
 
 class MpiSaveVideo:

@@ -447,22 +447,35 @@ def resolve_input_file(name):
     return resolve_in_comfy_dir(text)
 
 
-# Socket-only (no widget), so an unconnected input never reaches the node and a
-# connected one always does, even when it carries "" - see picked_name.
+NONE_CHOICE = "None"
+
+# A widget, so a host app can inject the file name straight into the loader.
 PICKER_STRING_INPUT = (
     "STRING",
     {
-        "forceInput": True,
-        "tooltip": "Optional path wire. When connected it decides instead of the picker, and an empty string means nothing is loaded. Relative to ComfyUI's input/ folder; an absolute path must be inside input/, output/ or temp/.",
+        "default": "",
+        "multiline": False,
+        "tooltip": "File name inside ComfyUI's input/ folder, with its subfolder if it has one (an absolute path must be inside input/, output/ or temp/). Tried first; if it is empty or does not load, the picker is tried. Nothing loads only when both fail (picker on None).",
     },
 )
 
 
-def picked_name(picker, string):
-    """What a picker node loads: a CONNECTED `string` decides, even when it is
-    empty (an empty wire must still read as nothing loaded, the way
-    MpiLoadImageFromPath does); the picker is used only when nothing is wired."""
-    return picker if string is None else string
+def picker_choices(exts):
+    """A picker's list: None first (so a new node loads nothing until told to),
+    then the matching files in input/."""
+    return [NONE_CHOICE] + list_input_files(exts)
+
+
+def picked_names(picker, string):
+    """What a picker node tries to load, in order: the `string` if filled, then
+    the picker unless it is None. The node loads the first that works, so a
+    stale or mistyped string still falls back to the picked file; an app that
+    injects the file name saves its workflows with the picker on None."""
+    text = (string or "").strip()
+    names = [text] if text else []
+    if picker not in (None, "", NONE_CHOICE):
+        names.append(picker)
+    return names
 
 
 def list_input_files(exts):
