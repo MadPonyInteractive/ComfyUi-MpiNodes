@@ -9,6 +9,8 @@ from .help_funcs import (
     video_has_audio_stream,
     resolve_input_file,
     list_input_files,
+    picked_name,
+    PICKER_STRING_INPUT,
 )
 
 VIDEO_EXTS = (".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v", ".gif")
@@ -202,7 +204,7 @@ class MpiLoadVideo:
                     {
                         "default": "",
                         "multiline": False,
-                        "tooltip": "Video file path, relative to ComfyUI's input/ folder (an absolute path must be inside input/, output/ or temp/). Overrides the video picker when filled. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
+                        "tooltip": "Video file path, relative to ComfyUI's input/ folder (an absolute path must be inside input/, output/ or temp/). Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
                     },
                 ),
                 "block_if_empty": (
@@ -224,24 +226,11 @@ class MpiLoadVideo:
                         "tooltip": "Resample the video to this frame rate while decoding. 0 = keep the source rate. ffmpeg drops/duplicates frames inside the pass that already happens, so it costs nothing and needs no interpolation model. fps, frame_count and duration are all reported at the forced rate.",
                     },
                 ),
-                # Last on purpose: saved workflows fill widgets by position.
-                "video": (
-                    list_input_files(VIDEO_EXTS),
-                    {
-                        "video_upload": True,
-                        "tooltip": "Pick, drop or paste a video; it is uploaded into ComfyUI's input/ folder. Used only when string is empty.",
-                    },
-                ),
             },
         }
 
-    @classmethod
-    def VALIDATE_INPUTS(cls, video=None):
-        # Pasted/subfolder names are not in the combo list; load() resolves
-        # and contains them, and a missing file blocks instead of erroring.
-        return True
-
-    RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "INT", "FLOAT", "INT", "INT", "BOOLEAN")
+    # `loaded` is appended LAST so saved links keep their slots.
+    RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "INT", "FLOAT", "INT", "INT", "BOOLEAN", "BOOLEAN")
     RETURN_NAMES = (
         "images",
         "audio",
@@ -251,6 +240,7 @@ class MpiLoadVideo:
         "width",
         "height",
         "has_audio",
+        "loaded",
     )
     CATEGORY = "MpiNodes/Video"
     DESCRIPTION = (
@@ -261,11 +251,12 @@ class MpiLoadVideo:
         "(True when the file contains an audio track). Input is named 'string' "
         "to match MpiString / MpiAnyChecker. Empty/missing path blocks downstream "
         "unless block_if_empty is off, in which case it outputs a blank 1x1 image "
-        "+ silent audio so the graph continues. force_rate resamples the video to "
+        "+ silent audio so the graph continues. loaded is true only when a video "
+        "was decoded, and is never blocked, so it can gate other branches. "
+        "force_rate resamples the video to "
         "that frame rate during the same decode pass (0 = keep the source rate); "
         "fps, frame_count and duration are then all reported at the forced rate. "
-        "Pick or drop a video with the picker, or fill string to override it; "
-        "either must resolve inside ComfyUI's input/, output/ or temp/ folders."
+        "The path must resolve inside ComfyUI's input/, output/ or temp/ folders."
     )
     FUNCTION = "load"
 
@@ -275,13 +266,13 @@ class MpiLoadVideo:
 
         if block_if_empty:
             b = ExecutionBlocker(None)
-            return (b, b, 0.0, 0, 0.0, 0, 0, False)
+            return (b, b, 0.0, 0, 0.0, 0, 0, False, False)
         image = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
         audio = {"waveform": torch.zeros((1, 1, 1), dtype=torch.float32), "sample_rate": 44100}
-        return (image, audio, 0.0, 0, 0.0, 0, 0, False)
+        return (image, audio, 0.0, 0, 0.0, 0, 0, False, False)
 
-    def load(self, string, block_if_empty=True, force_rate=0.0, video=None):
-        path = resolve_input_file((string or "").strip() or video)
+    def load(self, string, block_if_empty=True, force_rate=0.0):
+        path = resolve_input_file(string)
         ffmpeg = find_ffmpeg()
         if not path or not os.path.isfile(path) or not ffmpeg:
             return self._empty(block_if_empty)
@@ -296,7 +287,46 @@ class MpiLoadVideo:
             fps = rate  # report the rate the frames actually came out at
         audio = _load_audio(ffmpeg, path)
         duration = n / fps if fps else 0.0
-        return (images, audio, fps, n, duration, w, h, audio is not None)
+        return (images, audio, fps, n, duration, w, h, audio is not None, True)
+
+
+class MpiLoadVideoUpload(MpiLoadVideo):
+    @classmethod
+    def INPUT_TYPES(cls):
+        types = super().INPUT_TYPES()
+        types["required"] = {
+            # Required: the frontend only attaches the upload button to a
+            # required combo.
+            "video": (
+                list_input_files(VIDEO_EXTS),
+                {
+                    "video_upload": True,
+                    "tooltip": "Pick a video, or use the upload button / drag-and-drop; the file is uploaded into ComfyUI's input/ folder.",
+                },
+            ),
+            "block_if_empty": types["required"]["block_if_empty"],
+        }
+        types["optional"]["string"] = PICKER_STRING_INPUT
+        return types
+
+    SEARCH_ALIASES = ["load video", "upload video", "open video", "video loader"]
+    DESCRIPTION = (
+        "Mpi Load Video with a file picker and an upload button (the file is "
+        "uploaded into ComfyUI's input/ folder, like the built-in Load Video). "
+        "Wire a STRING into `string` and the wire decides instead: a path inside "
+        "input/, output/ or temp/, and an EMPTY string counts as nothing loaded. "
+        "Same outputs as Mpi Load Video, including loaded, which is false "
+        "(never blocked) when nothing was decoded."
+    )
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, video=None):
+        # Pasted/subfolder names are not in the combo list; a missing file
+        # blocks at run time instead of failing validation.
+        return True
+
+    def load(self, video=None, block_if_empty=True, force_rate=0.0, string=None):
+        return super().load(picked_name(video, string), block_if_empty, force_rate)
 
 
 class MpiLoadAudio:
@@ -309,7 +339,7 @@ class MpiLoadAudio:
                     {
                         "default": "",
                         "multiline": False,
-                        "tooltip": "Audio (or video) file path, relative to ComfyUI's input/ folder (an absolute path must be inside input/, output/ or temp/). Overrides the audio picker when filled. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
+                        "tooltip": "Audio (or video) file path, relative to ComfyUI's input/ folder (an absolute path must be inside input/, output/ or temp/). Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
                     },
                 ),
                 "block_if_empty": (
@@ -320,23 +350,11 @@ class MpiLoadAudio:
                     },
                 ),
             },
-            "optional": {
-                "audio": (
-                    list_input_files(AUDIO_EXTS),
-                    {
-                        "audio_upload": True,
-                        "tooltip": "Pick, drop or paste an audio (or video) file; it is uploaded into ComfyUI's input/ folder. Used only when string is empty.",
-                    },
-                ),
-            },
         }
 
-    @classmethod
-    def VALIDATE_INPUTS(cls, audio=None):
-        return True  # same reason as MpiLoadVideo
-
-    RETURN_TYPES = ("AUDIO",)
-    RETURN_NAMES = ("audio",)
+    # `loaded` is appended LAST so saved links keep their slots.
+    RETURN_TYPES = ("AUDIO", "BOOLEAN")
+    RETURN_NAMES = ("audio", "loaded")
     CATEGORY = "MpiNodes/Video"
     DESCRIPTION = (
         "Load audio from a file path into a ComfyUI AUDIO object, like the "
@@ -344,9 +362,9 @@ class MpiLoadAudio:
         "MpiAnyChecker). Works on any file ffmpeg can read, including pulling "
         "the audio track out of a video. Empty/missing/audio-less path blocks "
         "downstream unless block_if_empty is off, in which case it outputs "
-        "silent audio so the graph continues. Pick or drop a file with the "
-        "picker, or fill string to override it; either must resolve inside "
-        "ComfyUI's input/, output/ or temp/ folders."
+        "silent audio so the graph continues. loaded is true only when audio "
+        "was read, and is never blocked, so it can gate other branches. The "
+        "path must resolve inside ComfyUI's input/, output/ or temp/ folders."
     )
     FUNCTION = "load"
 
@@ -355,11 +373,11 @@ class MpiLoadAudio:
         import torch  # type: ignore
 
         if block_if_empty:
-            return (ExecutionBlocker(None),)
-        return ({"waveform": torch.zeros((1, 1, 1), dtype=torch.float32), "sample_rate": 44100},)
+            return (ExecutionBlocker(None), False)
+        return ({"waveform": torch.zeros((1, 1, 1), dtype=torch.float32), "sample_rate": 44100}, False)
 
-    def load(self, string, block_if_empty=True, audio=None):
-        path = resolve_input_file((string or "").strip() or audio)
+    def load(self, string, block_if_empty=True):
+        path = resolve_input_file(string)
         ffmpeg = find_ffmpeg()
         if not path or not os.path.isfile(path) or not ffmpeg:
             return self._empty(block_if_empty)
@@ -367,7 +385,45 @@ class MpiLoadAudio:
         audio = _load_audio(ffmpeg, path)
         if audio is None:
             return self._empty(block_if_empty)
-        return (audio,)
+        return (audio, True)
+
+
+class MpiLoadAudioUpload(MpiLoadAudio):
+    @classmethod
+    def INPUT_TYPES(cls):
+        types = super().INPUT_TYPES()
+        types["required"] = {
+            # Must be REQUIRED and named `audio`: that is what the frontend's
+            # upload extension looks for. web/MpiLoadAudioUpload.js adds the
+            # player widget it needs, which core adds only to its own nodes.
+            "audio": (
+                list_input_files(AUDIO_EXTS),
+                {
+                    "audio_upload": True,
+                    "tooltip": "Pick an audio (or video) file, or use the upload button / drag-and-drop; the file is uploaded into ComfyUI's input/ folder.",
+                },
+            ),
+            "block_if_empty": types["required"]["block_if_empty"],
+        }
+        types["optional"] = {"string": PICKER_STRING_INPUT}
+        return types
+
+    SEARCH_ALIASES = ["load audio", "upload audio", "open audio", "audio loader"]
+    DESCRIPTION = (
+        "Mpi Load Audio with a file picker, a player and an upload button (the "
+        "file is uploaded into ComfyUI's input/ folder, like the built-in Load "
+        "Audio). Reads the audio track of video files too. Wire a STRING into "
+        "`string` and the wire decides instead: a path inside input/, output/ or "
+        "temp/, and an EMPTY string counts as nothing loaded. Outputs audio and "
+        "loaded, which is false (never blocked) when no audio was read."
+    )
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, audio=None):
+        return True  # same reason as MpiLoadVideoUpload
+
+    def load(self, audio=None, block_if_empty=True, string=None):
+        return super().load(picked_name(audio, string), block_if_empty)
 
 
 class MpiSaveVideo:

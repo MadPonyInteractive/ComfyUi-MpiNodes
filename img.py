@@ -1,5 +1,5 @@
 import torch  # type:ignore
-from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple, crop_offset, pick_from_batch, resolve_in_comfy_dir, resolve_input_file, list_input_files
+from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple, crop_offset, pick_from_batch, resolve_in_comfy_dir, resolve_input_file, list_input_files, picked_name, PICKER_STRING_INPUT
 import math
 import os
 import numpy as np  # type: ignore
@@ -494,8 +494,9 @@ class MpiLoadImageFromPath(PreviewImage):
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT")
-    RETURN_NAMES = ("image", "mask", "width", "height")
+    # `loaded` is appended LAST so saved links keep their slots.
+    RETURN_TYPES = ("IMAGE", "MASK", "INT", "INT", "BOOLEAN")
+    RETURN_NAMES = ("image", "mask", "width", "height", "loaded")
     OUTPUT_NODE = True
     CATEGORY = "MpiNodes/ImgOps"
     DESCRIPTION = (
@@ -503,6 +504,8 @@ class MpiLoadImageFromPath(PreviewImage):
         "width and height. If the path is empty/missing, downstream execution is "
         "blocked (no need for a separate blocker node) unless block_if_empty is "
         "off, in which case it outputs a blank 1x1 image so the graph continues. "
+        "loaded is true only when a file was actually read, and is never blocked, "
+        "so it can gate other branches. "
         "The path is resolved inside ComfyUI's input/, output/ or temp/ folders; "
         "anything outside is treated as missing."
     )
@@ -515,25 +518,25 @@ class MpiLoadImageFromPath(PreviewImage):
         if not path or not os.path.isfile(path):
             if block_if_empty:
                 blocked = ExecutionBlocker(None)
-                return {"ui": {"images": []}, "result": (blocked, blocked, 0, 0)}
+                return {"ui": {"images": []}, "result": (blocked, blocked, 0, 0, False)}
             image = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
             mask = torch.zeros((1, 1, 1), dtype=torch.float32)
-            return {"ui": {"images": []}, "result": (image, mask, 0, 0)}
+            return {"ui": {"images": []}, "result": (image, mask, 0, 0, False)}
 
         image, mask = load_image_from_path(path, channel)
         _, h, w, _ = image.shape
         # Reuse PreviewImage.save_images for the in-graph thumbnail.
         preview = self.save_images(image, prompt=prompt, extra_pnginfo=extra_pnginfo)
-        return {"ui": preview["ui"], "result": (image, mask, w, h)}
+        return {"ui": preview["ui"], "result": (image, mask, w, h, True)}
 
 
 IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff")
 
 
 def _chosen_image(string, image):
-    """Contained path of the picked image (a filled string wins), or None when
-    it is outside ComfyUI's folders or not an image extension."""
-    path = resolve_input_file((string or "").strip() or image)
+    """Contained path of the chosen image, or None when it is empty, outside
+    ComfyUI's folders or not an image extension."""
+    path = resolve_input_file(picked_name(image, string))
     return path if path and path.lower().endswith(IMAGE_EXTS) else None
 
 
@@ -553,26 +556,19 @@ class MpiLoadImage(MpiLoadImageFromPath):
             "channel": req["channel"],
             "block_if_empty": req["block_if_empty"],
         }
-        types["optional"] = {
-            "string": (
-                "STRING",
-                {
-                    "default": "",
-                    "multiline": False,
-                    "tooltip": "Optional image path that overrides the picker, relative to ComfyUI's input/ folder (an absolute path must be inside input/, output/ or temp/).",
-                },
-            ),
-        }
+        types["optional"] = {"string": PICKER_STRING_INPUT}
         return types
 
     SEARCH_ALIASES = ["load image", "upload image", "open image", "image loader"]
     DESCRIPTION = (
         "Load an image like the built-in Load Image (pick, drag-and-drop or "
         "paste; the file is uploaded into ComfyUI's input/ folder) and preview "
-        "it in-graph. A filled string overrides the picker with a path inside "
-        "input/, output/ or temp/. Also outputs width and height, and channel "
-        "picks the mask source. A missing file blocks downstream execution "
-        "unless block_if_empty is off, in which case it outputs a blank 1x1 image."
+        "it in-graph. Wire a STRING into `string` and the wire decides instead: "
+        "a path inside input/, output/ or temp/, and an EMPTY string counts as "
+        "nothing loaded. Also outputs width and height, and channel picks the "
+        "mask source. Nothing loaded blocks downstream execution unless "
+        "block_if_empty is off (then a blank 1x1 image); loaded is false either "
+        "way and is never blocked."
     )
 
     @classmethod
@@ -581,12 +577,12 @@ class MpiLoadImage(MpiLoadImageFromPath):
         # blocks at run time instead of failing validation.
         return True
 
-    def load(self, image=None, channel="alpha", block_if_empty=True, string="", prompt=None, extra_pnginfo=None):
+    def load(self, image=None, channel="alpha", block_if_empty=True, string=None, prompt=None, extra_pnginfo=None):
         path = _chosen_image(string, image)
         return super().load(path or "", channel, block_if_empty, prompt, extra_pnginfo)
 
     @classmethod
-    def IS_CHANGED(cls, image=None, string="", **kwargs):
+    def IS_CHANGED(cls, image=None, string=None, **kwargs):
         path = _chosen_image(string, image)
         if not path or not os.path.isfile(path):
             return "missing"

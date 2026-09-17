@@ -447,6 +447,24 @@ def resolve_input_file(name):
     return resolve_in_comfy_dir(text)
 
 
+# Socket-only (no widget), so an unconnected input never reaches the node and a
+# connected one always does, even when it carries "" - see picked_name.
+PICKER_STRING_INPUT = (
+    "STRING",
+    {
+        "forceInput": True,
+        "tooltip": "Optional path wire. When connected it decides instead of the picker, and an empty string means nothing is loaded. Relative to ComfyUI's input/ folder; an absolute path must be inside input/, output/ or temp/.",
+    },
+)
+
+
+def picked_name(picker, string):
+    """What a picker node loads: a CONNECTED `string` decides, even when it is
+    empty (an empty wire must still read as nothing loaded, the way
+    MpiLoadImageFromPath does); the picker is used only when nothing is wired."""
+    return picker if string is None else string
+
+
 def list_input_files(exts):
     """Sorted names of the files directly in ComfyUI's input/ whose name ends
     in one of `exts` (lower-case, with the dot): the list a browse/upload

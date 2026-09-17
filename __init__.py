@@ -111,7 +111,7 @@ from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3ImageToVideo, MpiH3Length, Mp
 from .bernini import MpiBerniniConditioning, MpiBerniniLength
 from .vram import MpiClearVram, MpiClearVramEnd
 from .sampler import MpiWindowedSampler
-from .video import MpiAudioRange, MpiAudioSplice, MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio
+from .video import MpiAudioRange, MpiAudioSplice, MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio, MpiLoadVideoUpload, MpiLoadAudioUpload
 from .latent import MpiSaveLatent, MpiLoadLatent, MpiStageLatents, MpiLatentUpscale
 from .preview import MpiVideoSamplingPreview, MpiTinyVaeLoader
 from .splat import MpiBrushTrain
@@ -241,6 +241,8 @@ NODE_CLASS_MAPPINGS = {
     "MpiSaveVideo": MpiSaveVideo,
     "MpiLoadVideo": MpiLoadVideo,
     "MpiLoadAudio": MpiLoadAudio,
+    "MpiLoadVideoUpload": MpiLoadVideoUpload,
+    "MpiLoadAudioUpload": MpiLoadAudioUpload,
     "MpiSaveLatent": MpiSaveLatent,
     "MpiLoadLatent": MpiLoadLatent,
     "MpiStageLatents": MpiStageLatents,
@@ -372,6 +374,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiSaveVideo": "Mpi Save Video",
     "MpiLoadVideo": "Mpi Load Video",
     "MpiLoadAudio": "Mpi Load Audio",
+    "MpiLoadVideoUpload": "Mpi Load Video Upload",
+    "MpiLoadAudioUpload": "Mpi Load Audio Upload",
     "MpiSaveLatent": "Mpi Save Latent",
     "MpiLoadLatent": "Mpi Load Latent",
     "MpiStageLatents": "Mpi Stage Latents",
