@@ -1,5 +1,5 @@
 import torch  # type:ignore
-from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple, crop_offset, pick_from_batch, resolve_in_comfy_dir
+from .help_funcs import aspect_ratio, create_mask_from_bbox, round_to_multiple, crop_offset, pick_from_batch, resolve_in_comfy_dir, resolve_input_file, list_input_files
 import math
 import os
 import numpy as np  # type: ignore
@@ -525,6 +525,72 @@ class MpiLoadImageFromPath(PreviewImage):
         # Reuse PreviewImage.save_images for the in-graph thumbnail.
         preview = self.save_images(image, prompt=prompt, extra_pnginfo=extra_pnginfo)
         return {"ui": preview["ui"], "result": (image, mask, w, h)}
+
+
+IMAGE_EXTS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff")
+
+
+def _chosen_image(string, image):
+    """Contained path of the picked image (a filled string wins), or None when
+    it is outside ComfyUI's folders or not an image extension."""
+    path = resolve_input_file((string or "").strip() or image)
+    return path if path and path.lower().endswith(IMAGE_EXTS) else None
+
+
+class MpiLoadImage(MpiLoadImageFromPath):
+    @classmethod
+    def INPUT_TYPES(cls):
+        types = super().INPUT_TYPES()
+        req = types["required"]
+        types["required"] = {
+            "image": (
+                list_input_files(IMAGE_EXTS),
+                {
+                    "image_upload": True,
+                    "tooltip": "Pick, drop or paste an image; it is uploaded into ComfyUI's input/ folder.",
+                },
+            ),
+            "channel": req["channel"],
+            "block_if_empty": req["block_if_empty"],
+        }
+        types["optional"] = {
+            "string": (
+                "STRING",
+                {
+                    "default": "",
+                    "multiline": False,
+                    "tooltip": "Optional image path that overrides the picker, relative to ComfyUI's input/ folder (an absolute path must be inside input/, output/ or temp/).",
+                },
+            ),
+        }
+        return types
+
+    SEARCH_ALIASES = ["load image", "upload image", "open image", "image loader"]
+    DESCRIPTION = (
+        "Load an image like the built-in Load Image (pick, drag-and-drop or "
+        "paste; the file is uploaded into ComfyUI's input/ folder) and preview "
+        "it in-graph. A filled string overrides the picker with a path inside "
+        "input/, output/ or temp/. Also outputs width and height, and channel "
+        "picks the mask source. A missing file blocks downstream execution "
+        "unless block_if_empty is off, in which case it outputs a blank 1x1 image."
+    )
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, image=None):
+        # Pasted/subfolder names are not in the combo list; a missing file
+        # blocks at run time instead of failing validation.
+        return True
+
+    def load(self, image=None, channel="alpha", block_if_empty=True, string="", prompt=None, extra_pnginfo=None):
+        path = _chosen_image(string, image)
+        return super().load(path or "", channel, block_if_empty, prompt, extra_pnginfo)
+
+    @classmethod
+    def IS_CHANGED(cls, image=None, string="", **kwargs):
+        path = _chosen_image(string, image)
+        if not path or not os.path.isfile(path):
+            return "missing"
+        return "{}:{}".format(os.path.getmtime(path), os.path.getsize(path))
 
 
 def read_upscale_model_scale(upscale_model, fallback):

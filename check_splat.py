@@ -29,6 +29,7 @@ sys.modules["mpinodes"] = _pkg
 
 fp = types.ModuleType("folder_paths")
 fp.get_output_directory = lambda: tempfile.gettempdir()
+fp.get_input_directory = fp.get_temp_directory = fp.get_output_directory
 sys.modules["folder_paths"] = fp
 
 comfy = types.ModuleType("comfy")
@@ -153,6 +154,15 @@ splat.ensure_brush = lambda override="": exe  # the trainer is faked below, no b
 bars = []
 splat.comfy.utils.ProgressBar = lambda total: bars.append(_PBar(total)) or bars[-1]
 splat.time.sleep = lambda s: None
+
+# dataset_path is contained: the pack folder is outside every ComfyUI dir here.
+try:
+    node.train(PACK, total_steps=100)
+    raise SystemExit("FAIL: a dataset outside ComfyUI's folders must be refused")
+except FileNotFoundError as e:
+    assert "inside ComfyUI" in str(e), str(e)
+    print("ok  a dataset outside input/output/temp is refused")
+
 try:
     splat.subprocess.Popen = lambda cmd, **kw: FakeBrush(cmd)
     (ply,) = node.train(ds, total_steps=30000, export_every=5000, brush_path=exe)

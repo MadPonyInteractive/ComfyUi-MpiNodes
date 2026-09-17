@@ -14,6 +14,8 @@ from ..help_funcs import (
     copy_folder,
     write_lines_to_file,
     save_json_dict_abs,
+    resolve_in_comfy_dir,
+    resolve_input_file,
 )
 
 
@@ -63,6 +65,15 @@ class RPGPreset:
             comfy_paths.get_folder_paths("custom_nodes")[0],
             "ComfyUi-MpiNodes/user/prompt_gen_preset/",
         )
+        if (root_folder or "").strip():
+            # Contained: a free folder from /prompt is an arbitrary file read.
+            contained = resolve_input_file(root_folder)
+            if not contained or not os.path.isdir(contained):
+                raise ValueError(
+                    "MpiRandPromptGen: preset_folder must be a folder inside "
+                    "ComfyUI's input/, output/ or temp/ (empty = bundled preset)"
+                )
+            root_folder = contained
         self.root_folder: str = root_folder or preset_path
 
         self.file_list = list_text_files(self.root_folder)
@@ -285,7 +296,7 @@ class MpiRandPromptGen:
             "required": {
                 "preset_folder": (
                     "STRING",
-                    {"tooltip": "path/to/preset_folder"},
+                    {"tooltip": "Preset folder, relative to ComfyUI's input/ folder (an absolute path must be inside input/, output/ or temp/). Empty = the bundled preset."},
                 ),
                 "pre_positive": (
                     "STRING",
@@ -598,6 +609,7 @@ class MpiRandPromptGenSave:
                     "STRING",
                     {
                         "default": "path/to/save/preset_folder",
+                        "tooltip": "Folder relative to ComfyUI's output/ folder (an absolute path must be inside output/). The preset is saved to <destination_folder>/<preset_name>.",
                     },
                 ),
             },
@@ -606,15 +618,23 @@ class MpiRandPromptGenSave:
     def doit(
         self, preset: RPGPreset, preset_name: str, destination_folder: str
     ):
-        # Copy folder
-        dest_folder = os.path.join(destination_folder, preset_name)
+        # Contained to output/: a free write path from /prompt is an arbitrary
+        # file write under the registry's policy.
+        dest_folder = resolve_in_comfy_dir(
+            os.path.join(destination_folder.strip(), preset_name.strip()), ("output",)
+        )
+        if not dest_folder:
+            raise ValueError(
+                "MpiRandPromptGenSave: destination_folder/preset_name must be "
+                "inside ComfyUI's output/ folder"
+            )
         # copy folder contents if the destination folder does not exist
         if not os.path.isdir(dest_folder):
             copy_folder(preset.root_folder, dest_folder)
         # Update file lists
         for filename, value in preset.overriden_lists.items():
             options = value.get("options", [])
-            filename += ".txt"
+            filename = os.path.basename(filename) + ".txt"
             file_path = os.path.join(dest_folder, filename)
             write_lines_to_file(file_path, options)
         # Remove read_me_.txt

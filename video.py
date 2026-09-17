@@ -7,8 +7,12 @@ import folder_paths  # type: ignore
 from .help_funcs import (
     find_ffmpeg,
     video_has_audio_stream,
-    resolve_video_path,
+    resolve_input_file,
+    list_input_files,
 )
+
+VIDEO_EXTS = (".mp4", ".webm", ".mov", ".mkv", ".avi", ".m4v", ".gif")
+AUDIO_EXTS = (".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac", ".opus") + VIDEO_EXTS
 
 
 class MpiHasAudio:
@@ -20,7 +24,7 @@ class MpiHasAudio:
                     "STRING",
                     {
                         "default": "",
-                        "tooltip": "Path to the video file (same string fed to VHS_LoadVideoPath). Absolute path or a bare basename resolved against ComfyUI's input dir.",
+                        "tooltip": "Video file name, relative to ComfyUI's input/ folder (\"clip.mp4 [output]\" reads output/). An absolute path must be inside input/, output/ or temp/.",
                     },
                 ),
             },
@@ -198,7 +202,7 @@ class MpiLoadVideo:
                     {
                         "default": "",
                         "multiline": False,
-                        "tooltip": "Video file path. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
+                        "tooltip": "Video file path, relative to ComfyUI's input/ folder (an absolute path must be inside input/, output/ or temp/). Overrides the video picker when filled. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
                     },
                 ),
                 "block_if_empty": (
@@ -220,8 +224,22 @@ class MpiLoadVideo:
                         "tooltip": "Resample the video to this frame rate while decoding. 0 = keep the source rate. ffmpeg drops/duplicates frames inside the pass that already happens, so it costs nothing and needs no interpolation model. fps, frame_count and duration are all reported at the forced rate.",
                     },
                 ),
+                # Last on purpose: saved workflows fill widgets by position.
+                "video": (
+                    list_input_files(VIDEO_EXTS),
+                    {
+                        "video_upload": True,
+                        "tooltip": "Pick, drop or paste a video; it is uploaded into ComfyUI's input/ folder. Used only when string is empty.",
+                    },
+                ),
             },
         }
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, video=None):
+        # Pasted/subfolder names are not in the combo list; load() resolves
+        # and contains them, and a missing file blocks instead of erroring.
+        return True
 
     RETURN_TYPES = ("IMAGE", "AUDIO", "FLOAT", "INT", "FLOAT", "INT", "INT", "BOOLEAN")
     RETURN_NAMES = (
@@ -245,7 +263,9 @@ class MpiLoadVideo:
         "unless block_if_empty is off, in which case it outputs a blank 1x1 image "
         "+ silent audio so the graph continues. force_rate resamples the video to "
         "that frame rate during the same decode pass (0 = keep the source rate); "
-        "fps, frame_count and duration are then all reported at the forced rate."
+        "fps, frame_count and duration are then all reported at the forced rate. "
+        "Pick or drop a video with the picker, or fill string to override it; "
+        "either must resolve inside ComfyUI's input/, output/ or temp/ folders."
     )
     FUNCTION = "load"
 
@@ -260,8 +280,8 @@ class MpiLoadVideo:
         audio = {"waveform": torch.zeros((1, 1, 1), dtype=torch.float32), "sample_rate": 44100}
         return (image, audio, 0.0, 0, 0.0, 0, 0, False)
 
-    def load(self, string, block_if_empty=True, force_rate=0.0):
-        path = resolve_video_path((string or "").strip())
+    def load(self, string, block_if_empty=True, force_rate=0.0, video=None):
+        path = resolve_input_file((string or "").strip() or video)
         ffmpeg = find_ffmpeg()
         if not path or not os.path.isfile(path) or not ffmpeg:
             return self._empty(block_if_empty)
@@ -289,7 +309,7 @@ class MpiLoadAudio:
                     {
                         "default": "",
                         "multiline": False,
-                        "tooltip": "Audio (or video) file path. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
+                        "tooltip": "Audio (or video) file path, relative to ComfyUI's input/ folder (an absolute path must be inside input/, output/ or temp/). Overrides the audio picker when filled. Named 'string' so it matches MpiString / MpiAnyChecker outputs.",
                     },
                 ),
                 "block_if_empty": (
@@ -300,7 +320,20 @@ class MpiLoadAudio:
                     },
                 ),
             },
+            "optional": {
+                "audio": (
+                    list_input_files(AUDIO_EXTS),
+                    {
+                        "audio_upload": True,
+                        "tooltip": "Pick, drop or paste an audio (or video) file; it is uploaded into ComfyUI's input/ folder. Used only when string is empty.",
+                    },
+                ),
+            },
         }
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, audio=None):
+        return True  # same reason as MpiLoadVideo
 
     RETURN_TYPES = ("AUDIO",)
     RETURN_NAMES = ("audio",)
@@ -311,7 +344,9 @@ class MpiLoadAudio:
         "MpiAnyChecker). Works on any file ffmpeg can read, including pulling "
         "the audio track out of a video. Empty/missing/audio-less path blocks "
         "downstream unless block_if_empty is off, in which case it outputs "
-        "silent audio so the graph continues."
+        "silent audio so the graph continues. Pick or drop a file with the "
+        "picker, or fill string to override it; either must resolve inside "
+        "ComfyUI's input/, output/ or temp/ folders."
     )
     FUNCTION = "load"
 
@@ -323,8 +358,8 @@ class MpiLoadAudio:
             return (ExecutionBlocker(None),)
         return ({"waveform": torch.zeros((1, 1, 1), dtype=torch.float32), "sample_rate": 44100},)
 
-    def load(self, string, block_if_empty=True):
-        path = resolve_video_path((string or "").strip())
+    def load(self, string, block_if_empty=True, audio=None):
+        path = resolve_input_file((string or "").strip() or audio)
         ffmpeg = find_ffmpeg()
         if not path or not os.path.isfile(path) or not ffmpeg:
             return self._empty(block_if_empty)

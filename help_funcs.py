@@ -427,33 +427,39 @@ def resolve_in_comfy_dir(path, kinds=("input", "output", "temp")):
     return None
 
 
-def resolve_video_path(path):
-    """Resolve a video path string the way VHS_LoadVideoPath does.
+def resolve_input_file(name):
+    """Resolve a file widget value the way core LoadImage/LoadAudio do, contained.
 
-    The incoming path may be an absolute path (local runs) or a bare basename
-    (remote engines upload to ComfyUI's input dir and inject only the filename).
-    Returns the first existing resolution, falling back to the raw path.
+    Accepts a name or subfolder path under input/ ("clip.mp4", "pasted/a.png"),
+    core's annotated form ("clip.mp4 [output]"), or an absolute path that
+    already lives inside input/, output/ or temp/. Anything else returns None
+    (see resolve_in_comfy_dir). Remote engines upload into input/ and inject
+    only the file name, which this resolves.
     """
-    if not path:
-        return path
+    text = (name or "").strip().strip('"')
+    if not text:
+        return None
+    if not os.path.isabs(text):
+        try:
+            text = comfy_paths.get_annotated_filepath(text)
+        except Exception:  # newer ComfyUI raises on traversal itself
+            return None
+    return resolve_in_comfy_dir(text)
 
-    if os.path.isabs(path) and os.path.exists(path):
-        return path
 
-    # Mirror VHS resolution: try the annotated-filepath helper, then the
-    # plain input directory.
+def list_input_files(exts):
+    """Sorted names of the files directly in ComfyUI's input/ whose name ends
+    in one of `exts` (lower-case, with the dot): the list a browse/upload
+    combo shows."""
+    base = comfy_paths.get_input_directory()
     try:
-        annotated = comfy_paths.get_annotated_filepath(path)
-        if annotated and os.path.exists(annotated):
-            return annotated
-    except Exception:
-        pass
-
-    candidate = os.path.join(comfy_paths.get_input_directory(), path)
-    if os.path.exists(candidate):
-        return candidate
-
-    return path
+        names = os.listdir(base)
+    except OSError:
+        return []
+    return sorted(
+        n for n in names
+        if n.lower().endswith(exts) and os.path.isfile(os.path.join(base, n))
+    )
 
 
 def find_ffmpeg():
@@ -493,7 +499,7 @@ def video_has_audio_stream(path):
     probe errors — safer to produce video-only output than to crash a workflow
     on a phantom audio input.
     """
-    resolved = resolve_video_path(path)
+    resolved = resolve_input_file(path)
     if not resolved or not os.path.exists(resolved):
         return False
 

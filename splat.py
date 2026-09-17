@@ -31,6 +31,8 @@ import folder_paths  # type: ignore
 import comfy.utils  # type: ignore
 import comfy.model_management as mm  # type: ignore
 
+from .help_funcs import resolve_in_comfy_dir
+
 
 BRUSH_VERSION = "v0.3.0"
 BRUSH_RELEASE_URL = "https://github.com/ArthurBrussee/brush/releases/download"
@@ -170,7 +172,7 @@ class MpiBrushTrain:
     def INPUT_TYPES(cls):
         return {
             "required": {
-                "dataset_path": ("STRING", {"default": "", "multiline": False}),
+                "dataset_path": ("STRING", {"default": "", "multiline": False, "tooltip": "COLMAP dataset folder, relative to ComfyUI's input/ folder (an absolute path must be inside input/, output/ or temp/)."}),
                 "total_steps": ("INT", {"default": 30000, "min": 100, "max": 200000, "step": 100}),
             },
             "optional": {
@@ -198,15 +200,21 @@ class MpiBrushTrain:
         "Trains a Gaussian splat from a COLMAP dataset with Brush and returns the "
         "path of the exported .ply. Install Brush yourself into "
         "custom_nodes/ComfyUi-MpiNodes/bin/brush-v0.3.0/ (nothing is downloaded); "
-        "brush_path is only a file name inside that folder. A 30000-step "
+        "brush_path is only a file name inside that folder. dataset_path must be "
+        "inside ComfyUI's input/, output/ or temp/ folders. A 30000-step "
         "bake takes tens of minutes — a scene is a durable asset, not a generation."
     )
 
     def train(self, dataset_path, total_steps, export_every=5000, sh_degree=3,
               max_splats=10000000, brush_path="", max_resolution=2048):
-        dataset_path = (dataset_path or "").strip().strip('"')
-        if not os.path.isdir(dataset_path):
-            raise FileNotFoundError(f"dataset_path is not a directory: {dataset_path}")
+        # Contained: the dataset is read, and staged into, from a path typed into
+        # /prompt - outside ComfyUI's folders that is an arbitrary read/write.
+        typed = (dataset_path or "").strip().strip('"')
+        dataset_path = resolve_in_comfy_dir(typed)
+        if not dataset_path or not os.path.isdir(dataset_path):
+            raise FileNotFoundError(
+                f"dataset_path must be a folder inside ComfyUI's input/, output/ or temp/: {typed}"
+            )
 
         binary = ensure_brush((brush_path or "").strip().strip('"'))
         train_root = stage_clean_dataset(dataset_path)
