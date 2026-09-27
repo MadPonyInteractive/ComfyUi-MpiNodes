@@ -590,6 +590,19 @@ class MpiSaveVideo:
         }
 
 
+def _frame_sample(frames, fps, rate, total, from_end):
+    """A frame index as a sample index; `from_end` counts it back from the LAST SAMPLE.
+
+    Never from a frame count rounded off the track: at 44100 Hz / 24 fps a frame is
+    1837.5 samples, so a real soundtrack is almost never a whole number of frames,
+    and rounding its length put "from the end" up to half a frame PAST the end (a
+    -125 start on a 199.52-frame track resolved to frame 75 of 200 and ran 875
+    samples over). Multiplied before dividing, so a whole-sample answer stays exact.
+    """
+    i = round(frames * rate / fps)
+    return total + i if from_end else i
+
+
 class MpiAudioRange:
     @classmethod
     def INPUT_TYPES(cls):
@@ -619,19 +632,14 @@ class MpiAudioRange:
         waveform = audio["waveform"]
         rate = audio["sample_rate"]
         total = waveform.shape[-1]
-        frames = max(1, round(total / rate * fps))
 
-        s = start + frames if start < 0 else start
-        e = end + frames if end < 0 else end
-        s = max(0, min(s, frames - 1))
-        e = max(0, min(e, frames - 1))
-        if e < s:
+        # end is INCLUSIVE, so its boundary is where the frame after it starts: -1
+        # lands on the last sample, not on the end of the last WHOLE frame.
+        i0 = _frame_sample(start, fps, rate, total, start < 0)
+        i1 = _frame_sample(end + 1, fps, rate, total, end < 0)
+        i0, i1 = max(0, min(i0, total)), max(0, min(i1, total))
+        if i1 <= i0:
             return ({"waveform": waveform[..., :0], "sample_rate": rate},)
-
-        # Clamped rather than trusted: frames is derived from the waveform length,
-        # so the last frame's end can round a sample or two past the real tail.
-        i0 = min(total, round(s / fps * rate))
-        i1 = min(total, round((e + 1) / fps * rate))
         return ({"waveform": waveform[..., i0:i1], "sample_rate": rate},)
 
 
@@ -676,18 +684,23 @@ class MpiAudioSplice:
             wave_p = torchaudio.functional.resample(wave_p, patch["sample_rate"], rate)
 
         total = waveform.shape[-1]
-        frames = max(1, round(total / rate * fps))
-        s = start + frames if start < 0 else start
-        s = max(0, min(s, frames - 1))
-        i0 = min(total, round(s / fps * rate))
+        # Resolved exactly as MpiAudioRange resolves it, so the number that CUT a
+        # window writes it back onto the same sample.
+        i0 = max(0, min(total, _frame_sample(start, fps, rate, total, start < 0)))
         i1 = i0 + wave_p.shape[-1]
-        if i1 > total:
+        # Two frame counts rounded to samples separately (plus any resample) can
+        # disagree by a sample: 15 frames at 44100/24 is 27562.5 samples. Such a
+        # tail is dropped. A genuinely different window is a whole frame (~40 ms)
+        # or more out, far past 1 ms, and still raises.
+        if i1 - total > rate // 1000:
             raise ValueError(
-                f"A {wave_p.shape[-1]}-sample patch placed at frame {s} runs "
-                f"{i1 - total} samples past the end of a {total}-sample track. "
-                "Either start names a different window than the patch came from, "
-                "or the patch came from a different clip."
+                f"A {wave_p.shape[-1]}-sample patch placed at sample {i0} (start "
+                f"{start}) runs {i1 - total} samples past the end of a {total}-sample "
+                "track. Either start names a different window than the patch came "
+                "from, or the patch came from a different clip."
             )
+        wave_p = wave_p[..., :total - i0]
+        i1 = min(i1, total)
 
         # splice_audio indexes both tensors in the SAME coordinates, so the patch is
         # laid into a full-length buffer rather than the offset being threaded
