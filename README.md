@@ -240,6 +240,19 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 |---|---|
 | **MpiBrushTrain** | Trains a Gaussian splat from a COLMAP dataset with **Brush** (Apache-2.0) and returns the exported `.ply` path. `dataset_path` must be a folder inside ComfyUI's `input/`, `output/` or `temp/` (relative paths resolve under `input/`). Brush is a native binary that **you install**: download the release archive for your platform, check it against the SHA-256 pinned in `splat.py`, and extract it into `custom_nodes/ComfyUi-MpiNodes/bin/brush-v0.3.0/`. The node never downloads anything and never runs a path typed into the graph — `brush_path` is only a file name looked up inside that folder (the Comfy Registry reads download-and-run, and a widget naming an executable, as code execution). Two measured quirks shape the node. Brush **writes zero bytes to stdout when it is not on a TTY**, so there is no step line to parse; progress is read from the export directory instead, where Brush drops `export_{iter}.ply` every `--export-every` steps — a silent run is a working run, not a hung one. And a SplatKit dataset carries **four** COLMAP models, two of them under `_spheresfm_work/` on camera model 11 (SPHERE), which Brush picks between nondeterministically and then dies on with `Invalid camera model`; so the node stages a root holding exactly one model, hardlinking the images rather than copying tens of GB. Cancellable — a 30000-step bake takes tens of minutes, and interrupting the prompt kills the trainer. `max_resolution` (default 2048) is the third quirk and the one that costs RAM: Brush caches one decoded u8 RGB copy of every training view in HOST memory, so the bake needs `N_views x min(face_size, max_resolution)^2 x 3` bytes — ~11.5 GB for 984 faces at 2048, 4.5 GB at 1280 — and its own default of 1920 quietly discards the top of anything rendered larger. |
 
+### 3D Scene
+
+Depth for a 360 panorama and for fills painted into it, with **MoGe v1** (MIT, Microsoft) vendored in `scene3d/moge/` (licences beside it). Weights are a `.safetensors` file in `models/moge/` that you place there (the pack never downloads). Depth leaves as a raw little-endian float32 file under `output/scenes/` (rows x columns, no header) and the node returns its path.
+
+| Node | Description |
+|---|---|
+| **MpiPanoDepth** | Equirect depth of a 2:1 pano: MoGe on 12 icosahedron views (768 px, 100°), merged by least squares. Grid `depth_width` x `depth_width/2` (default 2048); sky pushed to twice the farthest depth. |
+| **MpiLiftDepth** | Lift a fill into a scene: MoGe depth of the image, scaled and shifted by least squares to `known_depth` (a raw float32 file in `input/`, camera z per pixel, 0 = unknown), kept on the holes grown 2 px, minus depth edges. Returns the depth file (0 = not kept) and the median relative fit error. |
+| **MpiWrapPad** | Pad a 360 pano with its own opposite edges so an upscaler or refiner sees the wrap like any other column. |
+| **MpiWrapCrop** | Undo Mpi Wrap Pad at whatever scale the image is now (give it the image from before the pad). |
+| **MpiWrapSoften** | Soften the hard line where a pano's edges meet, in flat areas only (`threshold`), so a seam pass joins it instead of leaving a light ridge. |
+| **MpiWrapCutMerge** | Undo Mpi Wrap Pad on a refined image by joining the two renders of the wrap strip along a min-cost cut, not a cross-fade, so no line shows twice. |
+
 ---
 
 ## License

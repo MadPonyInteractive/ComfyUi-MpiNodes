@@ -181,3 +181,5 @@
 
 # Version: V1.2.17
 - MpiAudioRange / MpiAudioSplice - a negative start or end now counts back from the LAST SAMPLE instead of from a frame count rounded off the track length. At 44100 Hz / 24 fps a frame is 1837.5 samples, so a real soundtrack is almost never whole frames, and the rounding put "from the end" up to half a frame past it: a 229688-sample patch at start -125 on a 366625-sample (199.52-frame) track resolved to frame 75 of 200 and raised 875 samples over. The same number now cuts and writes back the same samples on any track length. Behaviour change: end -1 on MpiAudioRange is the real last sample, where it used to stop at the last whole frame when the length rounded down; trim a padded track with an explicit positive end (the video frame count - 1). MpiAudioSplice drops an overhang of up to 1 ms (two separately rounded frame offsets can disagree by a sample) and still raises on anything larger. check_audio_range.py covers all of it.
+- MpiPanoDepth, MpiLiftDepth - added (3D Scene: MoGe v1 vendored in scene3d/moge, weights from models/moge/)
+- MpiWrapPad, MpiWrapCrop, MpiWrapSoften, MpiWrapCutMerge - added (3D Scene: 360 wrap helpers)

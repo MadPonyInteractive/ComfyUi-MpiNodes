@@ -115,6 +115,7 @@ from .video import MpiAudioRange, MpiAudioSplice, MpiHasAudio, MpiSaveVideo, Mpi
 from .latent import MpiSaveLatent, MpiLoadLatent, MpiStageLatents, MpiLatentUpscale
 from .preview import MpiVideoSamplingPreview, MpiTinyVaeLoader
 from .splat import MpiBrushTrain
+from .scene import MpiPanoDepth, MpiLiftDepth, MpiWrapPad, MpiWrapCrop, MpiWrapSoften, MpiWrapCutMerge
 
 # TEST NODES
 # from .dynamic_combo import MpiDynamicCombo
@@ -250,6 +251,12 @@ NODE_CLASS_MAPPINGS = {
     "MpiVideoSamplingPreview": MpiVideoSamplingPreview,
     "MpiTinyVaeLoader": MpiTinyVaeLoader,
     "MpiBrushTrain": MpiBrushTrain,
+    "MpiPanoDepth": MpiPanoDepth,
+    "MpiLiftDepth": MpiLiftDepth,
+    "MpiWrapPad": MpiWrapPad,
+    "MpiWrapCrop": MpiWrapCrop,
+    "MpiWrapSoften": MpiWrapSoften,
+    "MpiWrapCutMerge": MpiWrapCutMerge,
     # TESTS
     # "MpiDummyToggleNode": MpiDummyToggleNode,
     # "MpiDynamicCombo": MpiDynamicCombo,
@@ -383,6 +390,12 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiVideoSamplingPreview": "Mpi Video Sampling Preview",
     "MpiTinyVaeLoader": "Mpi Tiny Vae Loader",
     "MpiBrushTrain": "Mpi Brush Train",
+    "MpiPanoDepth": "Mpi Pano Depth",
+    "MpiLiftDepth": "Mpi Lift Depth",
+    "MpiWrapPad": "Mpi Wrap Pad",
+    "MpiWrapCrop": "Mpi Wrap Crop",
+    "MpiWrapSoften": "Mpi Wrap Soften",
+    "MpiWrapCutMerge": "Mpi Wrap Cut Merge",
 }
 
 WEB_DIRECTORY = "./web"

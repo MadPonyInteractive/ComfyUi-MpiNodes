@@ -13,3 +13,6 @@ dynamic_combo.py
 *.code-workspace
 .comfyignore
 node.zip
+
+# Unit tests (run with the engine python; not part of the pack)
+/tests/
