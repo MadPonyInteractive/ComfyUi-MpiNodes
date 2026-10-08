@@ -122,7 +122,8 @@ class MpiLiftDepth:
                 "image": ("IMAGE", {"tooltip": "The fill: a render whose holes a model painted."}),
                 "known_depth": ("STRING", {"default": "", "tooltip": (
                     "Raw float32 file in input/ (same size as the image, row-major): the camera z the "
-                    "scene already has at each pixel, 0 where nothing was rendered.")}),
+                    "scene already has at each pixel, 0 where nothing was rendered. A negative value "
+                    "is known at its size for the fit AND kept: a surface the fill replaces.")}),
                 "fov_x": ("FLOAT", {"default": 60.0, "min": 1.0, "max": 179.0, "step": 0.01,
                                     "tooltip": "Horizontal field of view of the render, degrees."}),
                 "model": (_moge_files(), {"tooltip": "MoGe v1 weights in models/moge/."}),

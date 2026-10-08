@@ -21,21 +21,24 @@ def _erode(mask, k):  # the border never erodes, as cv2.erode's default
 
 
 def lift_depth(zm, zc, erode=9, grow=5, edge_rtol=0.05):
-    """zm: MoGe depth of the fill [H, W]; zc: the scene's camera z [H, W], 0 where nothing is known.
+    """zm: MoGe depth of the fill [H, W]; zc: the scene's camera z [H, W]. Positive = known, not kept;
+    0 = unknown, kept; negative = known at -zc for the fit AND kept (a surface the fill replaces, e.g.
+    walls seen from behind by a camera inside the house).
 
-    Fits z = a * zm + b by least squares on the known pixels (eroded `erode` px off the holes), then
-    keeps the hole pixels grown by `grow` px, minus depth edges and invalid depth.
-    Returns (depth [H, W] float32 with 0 = not kept, a, b, median relative fit error)."""
-    known = torch.isfinite(zc) & (zc > 0)
+    Fits z = a * zm + b by least squares on the known pixels (eroded `erode` px off the unknown ones),
+    then keeps the pixels that are not positive-known, grown by `grow` px, minus depth edges and
+    invalid depth. Returns (depth [H, W] float32 with 0 = not kept, a, b, median relative fit error)."""
+    known = torch.isfinite(zc) & (zc != 0)
+    zk = zc.abs()
     fit = _erode(known & torch.isfinite(zm) & (zm > 0), erode)
     if int(fit.sum()) < 2:
         raise ValueError("lift: fewer than 2 known pixels to fit the fill's depth against - "
                          "the known-depth map is empty or does not match the fill")
     A = torch.stack([zm[fit], torch.ones_like(zm[fit])], 1).double()
-    ab = torch.linalg.lstsq(A, zc[fit][:, None].double()).solution[:, 0].float()
+    ab = torch.linalg.lstsq(A, zk[fit][:, None].double()).solution[:, 0].float()
     za = ab[0] * zm + ab[1]
-    rel = float(((za[fit] - zc[fit]).abs() / zc[fit]).median())
+    rel = float(((za[fit] - zk[fit]).abs() / zk[fit]).median())
     za_ok = torch.isfinite(za) & (za > 0)
     za_safe = torch.where(za_ok, za, torch.ones_like(za)).clamp_min(1e-4)
-    keep = _dilate(~known, grow) & za_ok & ~depth_edges(za_safe, edge_rtol)
+    keep = _dilate(~(known & (zc > 0)), grow) & za_ok & ~depth_edges(za_safe, edge_rtol)
     return torch.where(keep, za_safe, torch.zeros_like(za_safe)), float(ab[0]), float(ab[1]), rel

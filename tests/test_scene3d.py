@@ -90,6 +90,29 @@ def test_lift_depth_recovers_scale_and_shift():
         pass
 
 
+def test_lift_depth_negative_z_fits_and_keeps():
+    """Inside a house: the walls seen from behind are known for the fit but replaced by the fill."""
+    h, w = 48, 96
+    yy, xx = torch.meshgrid(torch.arange(h, dtype=torch.float32), torch.arange(w, dtype=torch.float32), indexing="ij")
+    truth = 3.0 + 0.02 * xx + 0.01 * yy
+    zm = (truth - 0.3) / 2.5
+    zc = truth.clone()
+    zc[:, w // 3:2 * w // 3] *= -1.0     # back-faced walls: fit here, keep here
+    zc[:, 2 * w // 3:] = 0.0             # holes: keep here
+    depth, a, b, rel = lift_depth(zm, zc)
+    assert abs(a - 2.5) < 1e-3 and abs(b - 0.3) < 1e-3 and rel < 1e-5
+    kept = depth > 0
+    assert kept[:, w // 3:].all() and not kept[:, :w // 3 - 2].any()
+    assert torch.allclose(depth[kept], truth[kept], rtol=1e-4)
+    # Only the walls known (no view out): the fit still lands, everything is kept.
+    depth, a, b, _ = lift_depth(zm, -truth)
+    assert abs(a - 2.5) < 1e-3 and abs(b - 0.3) < 1e-3 and (depth > 0).all()
+    # The wrong scale on the walls must move the fit: they really are in it.
+    zc2 = zc.clone()
+    zc2[:, w // 3:2 * w // 3] *= 1.5
+    assert abs(lift_depth(zm, zc2)[1] - 2.5) > 0.1
+
+
 def test_panorama_directions_round_trip():
     uv = np.random.default_rng(1).uniform(0.01, 0.99, (100, 2))
     back = directions_to_spherical_uv(spherical_uv_to_directions(uv))
