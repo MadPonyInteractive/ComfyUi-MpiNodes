@@ -116,6 +116,7 @@ from .latent import MpiSaveLatent, MpiLoadLatent, MpiStageLatents, MpiLatentUpsc
 from .preview import MpiVideoSamplingPreview, MpiTinyVaeLoader
 from .splat import MpiBrushTrain
 from .scene import MpiPanoDepth, MpiLiftDepth, MpiWrapPad, MpiWrapCrop, MpiWrapSoften, MpiWrapCutMerge
+from .grade import MpiGradeMatch
 
 # TEST NODES
 # from .dynamic_combo import MpiDynamicCombo
@@ -257,6 +258,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiWrapCrop": MpiWrapCrop,
     "MpiWrapSoften": MpiWrapSoften,
     "MpiWrapCutMerge": MpiWrapCutMerge,
+    "MpiGradeMatch": MpiGradeMatch,
     # TESTS
     # "MpiDummyToggleNode": MpiDummyToggleNode,
     # "MpiDynamicCombo": MpiDynamicCombo,
@@ -396,6 +398,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiWrapCrop": "Mpi Wrap Crop",
     "MpiWrapSoften": "Mpi Wrap Soften",
     "MpiWrapCutMerge": "Mpi Wrap Cut Merge",
+    "MpiGradeMatch": "Mpi Grade Match",
 }
 
 WEB_DIRECTORY = "./web"
