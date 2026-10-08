@@ -248,7 +248,7 @@ Depth for a 360 panorama and for fills painted into it, with **MoGe v1** (MIT, M
 | Node | Description |
 |---|---|
 | **MpiPanoDepth** | Equirect depth of a 2:1 pano: MoGe on 12 icosahedron views (768 px, 100°), merged by least squares. Grid `depth_width` x `depth_width/2` (default 2048); sky pushed to twice the farthest depth. |
-| **MpiLiftDepth** | Lift a fill into a scene: MoGe depth of the image, scaled and shifted by least squares to `known_depth` (a raw float32 file in `input/`, camera z per pixel, 0 = unknown, NEGATIVE = known at its size for the fit and still kept: a surface the fill replaces, such as walls seen from behind), kept on the holes grown 2 px, minus depth edges. Returns the depth file (0 = not kept) and the median relative fit error. |
+| **MpiLiftDepth** | Lift a fill into a scene: MoGe depth of the image, scaled and shifted by least squares to `known_depth` (a raw float32 file in `input/`, camera z per pixel, 0 = unknown, NEGATIVE = known at its size for the fit and still kept: a surface the fill replaces, such as walls seen from behind), kept on the holes grown 2 px, minus depth edges. Optional `ground` (`nx,ny,nz,d` in the camera frame): a kept pixel the fit puts under that plane moves onto it. Returns the depth file (0 = not kept) and the median relative fit error. |
 | **MpiWrapPad** | Pad a 360 pano with its own opposite edges so an upscaler or refiner sees the wrap like any other column. |
 | **MpiWrapCrop** | Undo Mpi Wrap Pad at whatever scale the image is now (give it the image from before the pad). |
 | **MpiWrapSoften** | Soften the hard line where a pano's edges meet, in flat areas only (`threshold`), so a seam pass joins it instead of leaving a light ridge. |

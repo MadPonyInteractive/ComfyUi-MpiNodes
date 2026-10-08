@@ -10,7 +10,7 @@ import numpy as np
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scene3d.lift import depth_edges, lift_depth  # noqa: E402
+from scene3d.lift import depth_edges, ground_depth, lift_depth  # noqa: E402
 from scene3d.moge.panorama import (directions_to_spherical_uv, get_panorama_cameras,  # noqa: E402
                                    merge_panorama_depth, spherical_uv_to_directions,
                                    split_panorama_image)
@@ -111,6 +111,36 @@ def test_lift_depth_negative_z_fits_and_keeps():
     zc2 = zc.clone()
     zc2[:, w // 3:2 * w // 3] *= 1.5
     assert abs(lift_depth(zm, zc2)[1] - 2.5) > 0.1
+
+
+def test_ground_depth_level_camera():
+    """A camera 0.5 above level ground, looking ahead: the bottom rows meet it, the top rows never do."""
+    h, w = 40, 60
+    g = ground_depth([0, 1, 0], 0.5, h, w, 90.0)  # f = 30 px
+    v = h - 1
+    assert abs(float(g[v, w // 2]) - 0.5 * 30 / (v + 0.5 - h / 2)) < 1e-4
+    assert torch.isinf(g[: h // 2]).all()
+
+
+def test_lift_depth_floor_lifts_what_sank_under_the_ground():
+    """MPI-623 behind_well: the fit, made on far known pixels, sank the near floor 2.4-6x. With the
+    ground plane, what lies under it moves onto it; what stands above it is untouched."""
+    h, w = 200, 300                       # big enough that the floor is no depth edge row to row
+    floor = ground_depth([0, 1, 0], 0.5, h, w, 90.0)
+    yy, xx = torch.meshgrid(torch.arange(h, dtype=torch.float32), torch.arange(w, dtype=torch.float32), indexing="ij")
+    wall = 4.0 + 0.02 * xx                # a tilted far wall, so the fit has a slope to find
+    truth = torch.minimum(floor, wall)
+    zm = truth.clone()
+    zm[yy >= h - 40] *= 3.0                # MoGe's near floor, as the live fit placed it: 3x too deep
+    zc = truth.clone()
+    zc[h // 2:] = 0.0                     # the floor is a hole: the fit sees the far wall only
+    depth, a, b, _ = lift_depth(zm, zc, floor=floor)
+    near = (yy >= h - 40) & (depth > 0)
+    assert near.any() and torch.allclose(depth[near], floor[near], rtol=1e-5)  # on the ground, not under it
+    above = (depth > 0) & (yy < h - 40)
+    assert torch.allclose(depth[above], (a * zm + b)[above], rtol=1e-5)       # nothing above it moved
+    sunk, _, _, _ = lift_depth(zm, zc)
+    assert (sunk[near] > floor[near] * 2).all()                                # without it: under the floor
 
 
 def test_panorama_directions_round_trip():

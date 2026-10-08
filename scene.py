@@ -15,7 +15,7 @@ import comfy.utils  # type: ignore
 import folder_paths  # type: ignore
 
 from .help_funcs import resolve_input_file
-from .scene3d.lift import lift_depth
+from .scene3d.lift import ground_depth, lift_depth
 from .scene3d.moge.model import MoGeModel
 from .scene3d.moge.panorama import panorama_depth
 from .scene3d.wrap import pad_at_scale, wrap_crop, wrap_cut_merge, wrap_pad, wrap_soften
@@ -127,7 +127,13 @@ class MpiLiftDepth:
                 "fov_x": ("FLOAT", {"default": 60.0, "min": 1.0, "max": 179.0, "step": 0.01,
                                     "tooltip": "Horizontal field of view of the render, degrees."}),
                 "model": (_moge_files(), {"tooltip": "MoGe v1 weights in models/moge/."}),
-            }
+            },
+            "optional": {
+                "ground": ("STRING", {"default": "", "tooltip": (
+                    "The ground plane in the render's camera frame (x right, y down, z ahead) as "
+                    "'nx,ny,nz,d': the points X with n . X = d. A kept pixel the fit puts under it "
+                    "moves onto it. Empty = no ground.")}),
+            },
         }
 
     RETURN_TYPES = ("STRING", "FLOAT")
@@ -147,7 +153,7 @@ class MpiLiftDepth:
         with open(path, "rb") as f:
             return hashlib.sha256(f.read()).hexdigest()
 
-    def run(self, image, known_depth, fov_x, model):
+    def run(self, image, known_depth, fov_x, model, ground=""):
         h, w = image.shape[1], image.shape[2]
         path = resolve_input_file(known_depth)
         if not path or not os.path.isfile(path):
@@ -155,11 +161,15 @@ class MpiLiftDepth:
         raw = np.fromfile(path, dtype="<f4")
         if raw.size != h * w:
             raise ValueError(f"MpiLiftDepth: known_depth holds {raw.size} values, the image is {w}x{h}")
+        plane = [float(v) for v in str(ground or "").replace(" ", "").split(",") if v]
+        if plane and len(plane) != 4:
+            raise ValueError(f"MpiLiftDepth: ground must be 'nx,ny,nz,d', got {ground!r}")
         moge = _load_moge(model)
         with _OnDevice(moge) as device:
             zm = moge.infer(image[0].permute(2, 0, 1).to(device), fov_x=fov_x)["depth"]
             zc = torch.from_numpy(raw.reshape(h, w)).to(device)
-            depth, _a, _b, rel = lift_depth(zm.float(), zc)
+            floor = ground_depth(plane[:3], plane[3], h, w, fov_x).to(device) if plane else None
+            depth, _a, _b, rel = lift_depth(zm.float(), zc, floor=floor)
             depth = depth.cpu().numpy()
         return (_save_f32(depth, "lift_depth"), rel)
 
