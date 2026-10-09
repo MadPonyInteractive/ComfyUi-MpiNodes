@@ -177,6 +177,7 @@ Dimension math, aspect ratio, bounding box conversion, and grid tiling.
 |---|---|
 | **MpiWanFrames** | Calculate duration from frame count and FPS. Returns frames, seconds, and fps. |
 | **MpiWanSeconds** | Calculate frame count from duration (seconds) and FPS. Returns frames, seconds, and fps. |
+| **MpiWanMaskedVideo** | Wan 2.1 image-to-video conditioning from a WHOLE guide video plus one hole mask a frame (white = invent here): Wan keeps the known pixels and invents the holes. With the Matrix-3D 360 LoRA this renders a camera path through a 360 panorama and invents what the path walks into. Matrix-3D's masked-video latent concat, ported from ComfyUI-SplatKit (MIT, notice in `wan_masked.py`); identical output to its `WanI2VMaskedConditioning` with `invert_mask` on. |
 
 ---
 

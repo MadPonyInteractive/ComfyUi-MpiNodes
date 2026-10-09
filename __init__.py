@@ -107,6 +107,7 @@ from .multi_text import (
     MpiMultiTextX5,
 )
 from .wan import MpiWanFrames, MpiWanSeconds
+from .wan_masked import MpiWanMaskedVideo
 from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3ImageToVideo, MpiH3Length, MpiH3MaskedPrefix, MpiH3References
 from .bernini import MpiBerniniConditioning, MpiBerniniLength
 from .vram import MpiClearVram, MpiClearVramEnd
@@ -226,6 +227,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiGridDimensions": MpiGridDimensions,
     "MpiWanFrames": MpiWanFrames,
     "MpiWanSeconds": MpiWanSeconds,
+    "MpiWanMaskedVideo": MpiWanMaskedVideo,
     "MpiH3DecodeAV": MpiH3DecodeAV,
     "MpiH3EncodeAV": MpiH3EncodeAV,
     "MpiH3ImageToVideo": MpiH3ImageToVideo,
@@ -366,6 +368,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiMaskPreview": "Mpi Mask Preview",
     "MpiWanFrames": "Mpi Wan Frames",
     "MpiWanSeconds": "Mpi Wan Seconds",
+    "MpiWanMaskedVideo": "Mpi Wan Masked Video",
     "MpiH3DecodeAV": "Mpi H3 Decode AV",
     "MpiH3EncodeAV": "Mpi H3 Encode AV",
     "MpiH3ImageToVideo": "Mpi H3 Image To Video",
