@@ -31,13 +31,17 @@ def ground_depth(normal, d, h, w, fov_x):
     return torch.where(nr > 1e-6, float(d) / nr.clamp_min(1e-6), torch.full_like(nr, float("inf")))
 
 
-def lift_depth(zm, zc, erode=9, grow=5, edge_rtol=0.05, floor=None):
+def lift_depth(zm, zc, erode=9, grow=5, edge_rtol=0.05, floor=None, flat=1.05):
     """zm: MoGe depth of the fill [H, W]; zc: the scene's camera z [H, W]. Positive = known, not kept;
     0 = unknown, kept; negative = known at -zc for the fit AND kept (a surface the fill replaces, e.g.
     walls seen from behind by a camera inside the house).
 
     Fits z = a * zm + b by least squares on the known pixels (eroded `erode` px off the unknown ones),
-    then keeps the pixels that are not positive-known, grown by `grow` px, minus depth edges and
+    or z = a * zm (a = the median ratio) when those pixels sit at one depth (zm's 90th / 10th
+    percentile under `flat`) or the slope comes out <= 0: then the slope is noise (MPI-623 window,
+    build view 3: known = one wall strip seen edge-on, a = -2.7, the back wall put behind the camera
+    and dropped) and MoGe's depth is right up to scale. Then it keeps the pixels that are not
+    positive-known, grown by `grow` px, minus depth edges and
     invalid depth. `floor` ([H, W], `ground_depth`) is the ground: a kept pixel the fit puts past it,
     under the floor, moves onto it - the fit is made on mid/far known pixels, and extrapolated to the
     near floor it sank it 2.4-6x (MPI-623, behind_well). ponytail: a real pit under the ground (a
@@ -51,6 +55,9 @@ def lift_depth(zm, zc, erode=9, grow=5, edge_rtol=0.05, floor=None):
                          "the known-depth map is empty or does not match the fill")
     A = torch.stack([zm[fit], torch.ones_like(zm[fit])], 1).double()
     ab = torch.linalg.lstsq(A, zk[fit][:, None].double()).solution[:, 0].float()
+    lo, hi = torch.quantile(zm[fit].float(), torch.tensor([0.1, 0.9], device=zm.device))
+    if ab[0] <= 0 or hi < lo * flat:
+        ab = torch.stack([(zk[fit] / zm[fit]).median(), torch.zeros((), device=zm.device)]).float()
     za = ab[0] * zm + ab[1]
     rel = float(((za[fit] - zk[fit]).abs() / zk[fit]).median())
     za_ok = torch.isfinite(za) & (za > 0)

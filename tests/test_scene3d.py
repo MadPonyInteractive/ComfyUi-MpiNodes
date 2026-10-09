@@ -113,6 +113,46 @@ def test_lift_depth_negative_z_fits_and_keeps():
     assert abs(lift_depth(zm, zc2)[1] - 2.5) > 0.1
 
 
+def test_lift_depth_one_depth_known_fits_scale_only():
+    """MPI-623 window, build view 3: the only known pixels were one wall strip seen edge-on, all at one
+    depth, so the slope was noise - it came out negative and the back wall, put behind the camera, was
+    dropped. A known set with no depth spread fits scale only."""
+    h, w = 48, 96
+    yy, xx = torch.meshgrid(torch.arange(h, dtype=torch.float32), torch.arange(w, dtype=torch.float32), indexing="ij")
+    truth = torch.full((h, w), 3.0)                  # the back wall
+    truth[:, :12] = 1.0                              # the near side wall's strip
+    zm = truth / 2.5
+    zm[:, :12] -= 0.002 * yy[:, :12] / h             # MoGe's noise on the strip, against the scene's
+    zc = torch.zeros(h, w)
+    zc[:, :12] = 1.0 + 0.004 * yy[:, :12] / h        # the scene knows the strip only, at ~one depth
+    A = torch.stack([zm[:, :3].flatten(), torch.ones(h * 3)], 1).double()
+    assert torch.linalg.lstsq(A, zc[:, :3].flatten()[:, None].double()).solution[0, 0] < 0  # the trap
+    depth, a, b, _ = lift_depth(zm, zc)
+    assert abs(a - 2.5) < 0.02 and b == 0.0
+    kept = depth > 0
+    assert kept[:, 13:].all()                        # the back wall is kept (col 12: the depth edge)...
+    assert torch.allclose(depth[:, 13:], truth[:, 13:], rtol=0.01)  # ...where it stands
+
+
+def test_lift_depth_scale_only_on_either_sign_of_noise():
+    """Each half of the guard alone: one depth known with a steep POSITIVE noise slope (a = 100 threw
+    the back wall 27x too far), and a known set WITH depth spread whose slope came out negative."""
+    h, w = 48, 96
+    yy, xx = torch.meshgrid(torch.arange(h, dtype=torch.float32), torch.arange(w, dtype=torch.float32), indexing="ij")
+    truth = torch.full((h, w), 3.0)
+    truth[:, :12] = 1.0
+    zm = truth / 2.5
+    zm[:, :12] += 0.0004 * yy[:, :12] / h            # with the scene, but far too little
+    zc = torch.zeros(h, w)
+    zc[:, :12] = 1.0 + 0.04 * yy[:, :12] / h
+    depth, a, b, _ = lift_depth(zm, zc)
+    assert b == 0.0 and torch.allclose(depth[:, 13:], truth[:, 13:], rtol=0.03)
+    zm2 = 1.0 - 0.005 * xx                           # spread (p90/p10 1.1) but against the scene
+    zc2 = torch.where(xx < w // 3, 2.0 + 0.02 * xx, torch.zeros_like(xx))
+    _, a, b, _ = lift_depth(zm2, zc2)
+    assert a > 0 and b == 0.0
+
+
 def test_ground_depth_level_camera():
     """A camera 0.5 above level ground, looking ahead: the bottom rows meet it, the top rows never do."""
     h, w = 40, 60
