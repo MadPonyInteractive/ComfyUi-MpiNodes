@@ -183,6 +183,31 @@ def test_lift_depth_floor_lifts_what_sank_under_the_ground():
     assert (sunk[near] > floor[near] * 2).all()                                # without it: under the floor
 
 
+def test_lift_depth_negative_shift_outside_fits_scale_only():
+    """MPI-623 behind_well, build view 3: the fit on the far known wall came out with a NEGATIVE shift,
+    which pulled the near floor up toward the camera (0.13-0.69 of the ground's depth) - and `floor`
+    only catches what sinks. Outside (no back faces) a negative shift fits scale only; inside it stays:
+    there the shift is the room's own fit."""
+    h, w = 200, 300
+    floor = ground_depth([0, 1, 0], 0.5, h, w, 90.0)
+    yy, xx = torch.meshgrid(torch.arange(h, dtype=torch.float32), torch.arange(w, dtype=torch.float32), indexing="ij")
+    wall = 4.0 + 0.02 * xx
+    on_floor = floor < wall
+    truth = torch.where(on_floor, floor, wall)
+    zm = torch.where(on_floor, floor / 2.5, (wall + 0.5) / 2.5)  # MoGe: right near, off by a shift far
+    zc = truth.clone()
+    zc[h // 2:] = 0.0                                             # the fit sees the far wall only
+    A = torch.stack([zm[: h // 2].flatten(), torch.ones(h // 2 * w)], 1).double()
+    assert torch.linalg.lstsq(A, zc[: h // 2].flatten()[:, None].double()).solution[1, 0] < -0.4  # the trap
+    depth, a, b, _ = lift_depth(zm, zc, floor=floor)
+    near = (yy >= h - 40) & (depth > 0)
+    assert b == 0.0 and near.any() and (depth[near] / floor[near] > 0.85).all()  # on the ground, near enough
+    zc_in = zc.clone()
+    zc_in[: h // 2, : w // 3] *= -1.0                             # inside: some of the wall seen from behind
+    _, a, b, _ = lift_depth(zm, zc_in, floor=floor)
+    assert abs(a - 2.5) < 1e-3 and abs(b + 0.5) < 1e-3            # the affine fit stands
+
+
 def test_panorama_directions_round_trip():
     uv = np.random.default_rng(1).uniform(0.01, 0.99, (100, 2))
     back = directions_to_spherical_uv(spherical_uv_to_directions(uv))

@@ -40,7 +40,14 @@ def lift_depth(zm, zc, erode=9, grow=5, edge_rtol=0.05, floor=None, flat=1.05):
     or z = a * zm (a = the median ratio) when those pixels sit at one depth (zm's 90th / 10th
     percentile under `flat`) or the slope comes out <= 0: then the slope is noise (MPI-623 window,
     build view 3: known = one wall strip seen edge-on, a = -2.7, the back wall put behind the camera
-    and dropped) and MoGe's depth is right up to scale. Then it keeps the pixels that are not
+    and dropped) and MoGe's depth is right up to scale. Also scale only when the shift comes out < 0
+    on a frame with no negative (back-faced) pixels, i.e. outside: a negative shift pulls the near
+    fill toward the camera, and `floor` only catches what sinks (MPI-623 behind_well, build view 3:
+    b = -0.318 floated the near floor up to 0.13-0.69 of the ground's depth; on 18 real outside views
+    this changes the 5 with b < 0, none for the worse). Inside, the shift is the room's own fit: scale
+    only on every inside view worsened 8 of 18 seams. ponytail: "outside" = no back face in the frame,
+    so an inside view seeing none gets the rule too (2 of 18: seams 0.29 -> 0.31, 0.48 -> 0.42); an
+    explicit inside input if that ever matters. Then it keeps the pixels that are not
     positive-known, grown by `grow` px, minus depth edges and
     invalid depth. `floor` ([H, W], `ground_depth`) is the ground: a kept pixel the fit puts past it,
     under the floor, moves onto it - the fit is made on mid/far known pixels, and extrapolated to the
@@ -56,7 +63,7 @@ def lift_depth(zm, zc, erode=9, grow=5, edge_rtol=0.05, floor=None, flat=1.05):
     A = torch.stack([zm[fit], torch.ones_like(zm[fit])], 1).double()
     ab = torch.linalg.lstsq(A, zk[fit][:, None].double()).solution[:, 0].float()
     lo, hi = torch.quantile(zm[fit].float(), torch.tensor([0.1, 0.9], device=zm.device))
-    if ab[0] <= 0 or hi < lo * flat:
+    if ab[0] <= 0 or hi < lo * flat or (ab[1] < 0 and not (known & (zc < 0)).any()):
         ab = torch.stack([(zk[fit] / zm[fit]).median(), torch.zeros((), device=zm.device)]).float()
     za = ab[0] * zm + ab[1]
     rel = float(((za[fit] - zk[fit]).abs() / zk[fit]).median())
