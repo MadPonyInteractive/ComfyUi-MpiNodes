@@ -8,7 +8,9 @@ import sys
 import torch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from grade import MpiGradeMatch, grade_match  # noqa: E402
+import torch.nn.functional as F  # noqa: E402
+
+from grade import MpiGradeMatch, _ring, grade_match  # noqa: E402
 
 GAIN, OFFSET = torch.tensor([0.8, 0.9, 1.1]), torch.tensor([0.10, -0.05, 0.02])
 RED = torch.tensor([0.9, 0.1, 0.1])
@@ -65,6 +67,21 @@ def test_frame_count_mismatch_raises():
         assert "frame counts differ" in str(e)
     else:
         raise AssertionError("expected a ValueError")
+
+
+def test_ring_is_the_full_square_dilation_and_a_moving_mask_still_gets_its_own():
+    # The separable ring must match the (2*band+1)^2 max-pool it replaced pixel for pixel.
+    inside = torch.zeros(64, 64, dtype=torch.bool)
+    inside[10:30, 25:50] = True
+    full = F.max_pool2d(inside.float()[None, None], 2 * 6 + 1, stride=1, padding=6)[0, 0] > 0.5
+    assert torch.equal(_ring(inside, 6), full & ~inside)
+    # The ring is built once for a still mask; a mask that moves must not reuse the first frame's.
+    plate, render, mask = _scene(frames=2)
+    moved = mask.clone()
+    moved[1] = torch.roll(mask[1], shifts=(0, 12), dims=(0, 1))
+    both = grade_match(plate, render, moved, 6)
+    alone = grade_match(plate[1:], render[1:], moved[1:], 6)
+    assert torch.allclose(both[1], alone[0])
 
 
 if __name__ == "__main__":

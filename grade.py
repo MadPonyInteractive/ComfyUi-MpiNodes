@@ -29,6 +29,16 @@ def fit_grade(g, o):
     return a, b
 
 
+def _ring(inside, band):
+    """The band-wide ring round `inside` (H, W bool). Square dilation is separable, so a row pass then a column
+    pass gives the same pixels as one (2*band+1)^2 max-pool at ~1/band of the cost (3.3 s -> 0.1 s a frame on
+    CPU at band 48, 512 px: the full kernel made this node most of a masked Video Edit run)."""
+    x = inside.float()[None, None]
+    x = F.max_pool2d(x, (1, 2 * band + 1), stride=1, padding=(0, band))
+    x = F.max_pool2d(x, (2 * band + 1, 1), stride=1, padding=(band, 0))
+    return (x[0, 0] > 0.5) & ~inside
+
+
 def grade_match(destination, source, mask, band):
     """Composite source over destination through mask, after grading source to destination.
 
@@ -53,13 +63,15 @@ def grade_match(destination, source, mask, band):
         raise ValueError(f"MpiGradeMatch: frame counts differ (destination {counts[0]}, source {counts[1]}, mask {counts[2]})")
 
     out = []
+    prev, ring = None, None
     for i in range(n):
         d, s, mi = dest[min(i, counts[0] - 1)], src[min(i, counts[1] - 1)], m[min(i, counts[2] - 1)]
         inside = mi > 0.5
         sel = ~inside
         if band > 0:
-            ring = F.max_pool2d(inside.float()[None, None], 2 * band + 1, stride=1, padding=band)[0, 0] > 0.5
-            ring &= ~inside
+            # A still mask (a box held for the whole clip) gives the same ring every frame: build it once.
+            if prev is None or not torch.equal(inside, prev):
+                ring, prev = _ring(inside, band), inside
             if int(ring.sum()) >= _MIN_PIXELS:
                 sel = ring
         if int(sel.sum()) >= _MIN_PIXELS:
