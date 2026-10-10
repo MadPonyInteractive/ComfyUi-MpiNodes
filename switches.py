@@ -35,15 +35,15 @@ class MpiSwitch:
     FUNCTION = "use_selected"
 
     def check_lazy_status(self, select: int, **kwargs):
-        lst = list(kwargs.keys())
-        if lst and len(lst) >= select:
-            return [lst[select - 1]]
-        return []
+        # Select by name so a gap (unwired slot) never shifts later indices.
+        input_name = f"{self._type_name}_{select}"
+        return [input_name] if input_name in kwargs else []
 
     def use_selected(self, select: int, **kwargs):
-        lst = list(kwargs.values())
-        if lst and len(lst) >= select:
-            return (lst[select - 1], select)
+        # Select by name so a gap (unwired slot) never shifts later indices.
+        input_name = f"{self._type_name}_{select}"
+        if input_name in kwargs:
+            return (kwargs[input_name], select)
         return (ExecutionBlocker(None), select)
 
 
