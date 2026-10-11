@@ -196,3 +196,6 @@
 - MpiSpeechToText - added (AUDIO in, the spoken words out: Qwen3-ASR on the engine's own transformers, weights from models/speech_to_text/<name>/; optional context box for names and terms to spell your way; Cubric Studio MPI-1071)
 
 # Version: V1.2.19
+- MpiSpeechToText - new srt output (SRT subtitles) appended after text; audio over 20 s is cut at its longest pauses into pieces of up to 20 s, so a long file no longer stops at the model's 1024-token output limit; quiet stretches are skipped (the model invented words for silence). Clips up to 20 s are still read in one pass (Cubric Studio MPI-1071)
+
+# Version: V1.2.20
