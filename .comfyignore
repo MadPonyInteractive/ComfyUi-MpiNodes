@@ -4,6 +4,9 @@
 
 # Self-checks and WIP nodes (intentionally not registered in __init__.py)
 check_splat.py
+check_speech.py
+check_audio_range.py
+test_switches.py
 test_dummy.py
 subgraph_test.py
 dynamic_combo.py
