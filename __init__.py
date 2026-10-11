@@ -108,6 +108,7 @@ from .multi_text import (
 )
 from .wan import MpiWanFrames, MpiWanSeconds
 from .wan_masked import MpiWanMaskedVideo
+from .speech import MpiSpeechToText
 from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3ImageToVideo, MpiH3Length, MpiH3MaskedPrefix, MpiH3References
 from .bernini import MpiBerniniConditioning, MpiBerniniLength
 from .vram import MpiClearVram, MpiClearVramEnd
@@ -228,6 +229,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiWanFrames": MpiWanFrames,
     "MpiWanSeconds": MpiWanSeconds,
     "MpiWanMaskedVideo": MpiWanMaskedVideo,
+    "MpiSpeechToText": MpiSpeechToText,
     "MpiH3DecodeAV": MpiH3DecodeAV,
     "MpiH3EncodeAV": MpiH3EncodeAV,
     "MpiH3ImageToVideo": MpiH3ImageToVideo,
@@ -369,6 +371,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiWanFrames": "Mpi Wan Frames",
     "MpiWanSeconds": "Mpi Wan Seconds",
     "MpiWanMaskedVideo": "Mpi Wan Masked Video",
+    "MpiSpeechToText": "Mpi Speech To Text",
     "MpiH3DecodeAV": "Mpi H3 Decode AV",
     "MpiH3EncodeAV": "Mpi H3 Encode AV",
     "MpiH3ImageToVideo": "Mpi H3 Image To Video",

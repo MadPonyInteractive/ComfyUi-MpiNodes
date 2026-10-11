@@ -193,3 +193,4 @@
 
 # Version: V1.2.18
 - MpiAnySwitch, MpiAnySwitch10, MpiLoraSwitch (all MpiSwitch subclasses) - fixed: check_lazy_status and use_selected selected by kwargs position (the Nth connected input), so a gap (unwired slot) silently ran the wrong branch for every later index. Both methods now select by input name (any_N / lora_name_N), so an unwired selected slot returns ExecutionBlocker and later indices are unaffected. Ungapped graphs are identical; test_switches.py covers gapped and ungapped cases for every class.
+- MpiSpeechToText - added (AUDIO in, the spoken words out: Qwen3-ASR on the engine's own transformers, weights from models/speech_to_text/<name>/; optional context box for names and terms to spell your way; Cubric Studio MPI-1071)
