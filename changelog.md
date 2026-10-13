@@ -199,3 +199,4 @@
 - MpiSpeechToText - new srt output (SRT subtitles) appended after text; audio over 20 s is cut at its longest pauses into pieces of up to 20 s, so a long file no longer stops at the model's 1024-token output limit; quiet stretches are skipped (the model invented words for silence). Clips up to 20 s are still read in one pass (Cubric Studio MPI-1071)
 
 # Version: V1.2.20
+- MpiWindowedSampler - one progress bar across every window (steps x windows) instead of a bar per window; the UI preview bar and the console tqdm both climb once, so a host counting bars as stages no longer sees the stage total grow mid-refine (Cubric Studio MPI-1131)

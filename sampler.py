@@ -16,6 +16,7 @@ detail. Every window reads the same source and the same noise, so two windows
 cannot disagree about content the way two independent generations would.
 """
 import torch  # type: ignore
+from tqdm.auto import tqdm  # type: ignore
 
 import comfy.model_management  # type: ignore
 import comfy.sample  # type: ignore
@@ -113,6 +114,29 @@ def plan_windows(total, window, overlap, grid=1):
     if spans[-1][1] - spans[-1][0] < window:
         spans[-1] = (max(0, total - window), total)
     return spans
+
+
+def _span_progress(model_patcher, steps, windows, x0_output, disable_pbar):
+    """(callback_for, pbar): one progress bar of steps * windows across every window.
+
+    `callback_for(index)` is the sampler callback for window `index`: it offsets the
+    step by the windows already done, so both the UI preview bar and the console
+    tqdm climb once from 0 to the end instead of restarting per window.
+    """
+    total = steps * windows
+    preview = latent_preview.prepare_callback(model_patcher, total, x0_output)
+    pbar = None if disable_pbar else tqdm(total=total)
+
+    def callback_for(index):
+        base = index * steps
+
+        def callback(step, x0, x, total_steps):
+            preview(base + step, x0, x, total)
+            if pbar is not None:
+                pbar.n = base + step + 1
+                pbar.refresh()
+        return callback
+    return callback_for, pbar
 
 
 def _edge_overlaps(spans, index):
@@ -333,6 +357,15 @@ class MpiWindowedSampler:
         # `output` -- an aliased second output is valid-looking and quietly wrong.
         x0_full = None
 
+        # ONE progress bar for the whole refine, not one per window. A host that
+        # counts bars as stages (Cubric Studio reads stdout tqdm locally and the WS
+        # progress event on a Pod) saw every window as a new stage, and since the
+        # window count is decided here at runtime it could never be predicted --
+        # the status bar climbed 2/2 -> 3/3 -> 4/4, each reading as the last step.
+        x0_output = {}
+        callback, pbar = _span_progress(guider.model_patcher, sigmas.shape[-1] - 1,
+                                        len(spans), x0_output, disable_pbar)
+
         for index, (start, end) in enumerate(spans):
             seg_latent = latent.copy()
             seg_video = video[:, :, start:end]
@@ -352,19 +385,18 @@ class MpiWindowedSampler:
             seg_noise = _rejoin_av(noise_video[:, :, start:end],
                                    _slice_rest(noise_rest, a0, a1, audio_len))
 
-            x0_output = {}
-            callback = latent_preview.prepare_callback(
-                guider.model_patcher, sigmas.shape[-1] - 1, x0_output)
+            x0_output.clear()
             print(f"[MpiWindowedSampler] window {index + 1}/{len(spans)} "
                   f"latent frames {start}-{end}")
 
             # The model deliberately stays loaded across windows: unloading here
             # would re-stream the whole DiT over PCIe once per window, which costs
-            # far more than the sampling it protects.
+            # far more than the sampling it protects. The sampler's own tqdm is off:
+            # `pbar` above is the one bar.
             result = guider.sample(
                 seg_noise, seg_latent["samples"], sampler, sigmas,
                 denoise_mask=seg_latent.get("noise_mask", None),
-                callback=callback, disable_pbar=disable_pbar, seed=noise.seed)
+                callback=callback(index), disable_pbar=True, seed=noise.seed)
             result = result.to(comfy.model_management.intermediate_device())
 
             seg_out, _ = _split_av(result)
@@ -378,6 +410,8 @@ class MpiWindowedSampler:
                     x0_full = torch.zeros_like(out_full)
                 x0_full[:, :, start:end] += seg_x0.to(x0_full.device) * w.view(weight_shape)
 
+        if pbar is not None:
+            pbar.close()
         weight_full = weight_full.clamp(min=1e-8)
         out_full = out_full / weight_full.to(out_full.dtype)
         if x0_full is not None:
