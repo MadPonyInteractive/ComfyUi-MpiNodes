@@ -200,3 +200,4 @@
 
 # Version: V1.2.20
 - MpiWindowedSampler - one progress bar across every window (steps x windows) instead of a bar per window; the UI preview bar and the console tqdm both climb once, so a host counting bars as stages no longer sees the stage total grow mid-refine (Cubric Studio MPI-1131)
+- MpiFlux3References - added (FLUX 3 Image Klein reference conditioning with all 10 slots flat and always present, ref_image_0..9; empty slots - nothing connected or the Mpi loaders 1x1 block_if_empty sentinel - are dropped and the survivors renumbered, since core ReferenceMultiLatent grows its Autogrow slots one at a time and would encode the sentinel as a real reference. Takes clip + prompt so slot-numbered <ref_image_N> tags, and bare ref_image_N layout-table values, are rewritten to core order before encoding; a bracketed tag naming an empty slot is removed. Delegates to core ReferenceMultiLatent.execute, outputs ref_tags)
