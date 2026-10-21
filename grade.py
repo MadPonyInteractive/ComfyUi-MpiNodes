@@ -114,3 +114,64 @@ class MpiGradeMatch:
 
     def doit(self, destination, source, mask, band):
         return (grade_match(destination, source, mask, band),)
+
+
+def grade_back(original, edited, enabled=True, max_shift=4.0):
+    """Grade an edit back to the picture it was made from, over the whole frame.
+
+    An image edit model re-renders every pixel and nudges the grade each pass (FLUX.3 Klein: a touch
+    warmer and more saturated), so chained edits drift. The fit runs on ALL paired pixels; what the edit
+    changed is the outlier fit_grade drops, so an added object keeps its own colours. A correction past
+    max_shift (mean, in /255) is a change the user asked for (night, a warmer grade) and is left alone.
+    """
+    if not enabled:
+        return edited
+    src = edited[..., :3].float().cpu()
+    _, H, W, _ = src.shape
+    ref = original[..., :3].float().cpu()
+    if ref.shape[1:3] != (H, W):
+        ref = F.interpolate(ref.movedim(-1, 1), size=(H, W), mode="bilinear", align_corners=False).movedim(1, -1)
+    out = []
+    for i in range(src.shape[0]):
+        s, r = src[i], ref[min(i, ref.shape[0] - 1)]
+        a, b = fit_grade(s.reshape(-1, 3), r.reshape(-1, 3))
+        graded = (s * a + b).clamp_(0.0, 1.0)
+        shift = float((graded - s).abs().mean()) * 255
+        keep = shift <= max_shift
+        print(f"[MpiGradeBack] shift {shift:.2f}/255 -> {'graded back' if keep else 'kept (over max_shift)'}")
+        out.append(graded if keep else s)
+    return torch.stack(out)
+
+
+class MpiGradeBack:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "original": ("IMAGE", {"tooltip": "The picture the edit was made from: the grade reference."}),
+                "edited": ("IMAGE", {"tooltip": "The edit's output, same framing as the original."}),
+                "enabled": ("BOOLEAN", {"default": True, "tooltip": "Off passes the edit through untouched."}),
+                "max_shift": (
+                    "FLOAT",
+                    {
+                        "default": 4.0, "min": 0.0, "max": 255.0, "step": 0.1,
+                        "tooltip": "Mean correction (/255) above which the change is taken as asked for and kept.",
+                    },
+                ),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("image",)
+    CATEGORY = "MpiNodes/ImgOps"
+    DESCRIPTION = (
+        "Grade an image edit back to the picture it was made from. A per-channel gain + offset is fitted over the "
+        "whole frame, refitted without what the edit changed, and applied: chained edits stop drifting warmer or "
+        "more saturated, and an added object keeps its own colours. A correction past max_shift is taken as a "
+        "grade the user asked for (night, warmer) and the edit is kept as it came. Needs the same framing; for a "
+        "masked composite use MpiGradeMatch."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, original, edited, enabled=True, max_shift=4.0):
+        return (grade_back(original, edited, enabled, max_shift),)

@@ -84,6 +84,29 @@ def test_ring_is_the_full_square_dilation_and_a_moving_mask_still_gets_its_own()
     assert torch.allclose(both[1], alone[0])
 
 
+def test_grade_back_removes_drift_and_keeps_the_added_object():
+    from grade import grade_back
+    plate, _, _ = _scene(frames=1)
+    edit = plate.clone()
+    edit[:, 26:38, 26:38] = RED  # what the edit added
+    drift = torch.tensor([1.02, 1.0, 0.97]), torch.tensor([0.01, 0.0, -0.005])  # a small warm drift
+    out = grade_back(plate, edit * drift[0] + drift[1])
+    assert (out[:, :20] - plate[:, :20]).abs().max() < 1e-3  # unchanged part back on the original
+    assert (out[0, 30, 30] - RED).abs().max() < 1e-3, out[0, 30, 30]  # the object keeps its own colour
+
+
+def test_grade_back_keeps_an_asked_for_regrade_and_passes_through_when_off():
+    from grade import grade_back
+    plate, _, _ = _scene(frames=1)
+    night = plate * torch.tensor([0.45, 0.5, 0.7])
+    assert torch.equal(grade_back(plate, night), night)  # past max_shift: the user's grade stays
+    drifted = plate * 1.02
+    assert grade_back(plate, drifted, enabled=False) is drifted
+    # a different-size original is resampled to the edit's frame
+    small = F.interpolate(plate.movedim(-1, 1), size=(32, 32), mode="bilinear", align_corners=False).movedim(1, -1)
+    assert grade_back(small, drifted).shape == drifted.shape
+
+
 if __name__ == "__main__":
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for name, fn in tests:
