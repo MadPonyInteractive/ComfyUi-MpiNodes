@@ -278,6 +278,16 @@ Depth for a 360 panorama and for fills painted into it, with **MoGe v1** (MIT, M
 | **MpiWrapSoften** | Soften the hard line where a pano's edges meet, in flat areas only (`threshold`), so a seam pass joins it instead of leaving a light ridge. |
 | **MpiWrapCutMerge** | Undo Mpi Wrap Pad on a refined image by joining the two renders of the wrap strip along a min-cost cut, not a cross-fade, so no line shows twice. |
 
+### Panorama, Stems, Frame Interpolation
+
+Ported with unchanged behaviour so Cubric Studio can drop three single-use packs (MIT; each licence sits beside its port).
+
+| Node | Description |
+|---|---|
+| **MpiPanoWarp** / **MpiPanoHarmonizeBoundary** / **MpiPanoKrea2Reference** / **MpiPanoRollHorizontal** / **MpiPanoSeamMask** | Place a picture on the sphere, roll the wrap seam, mask and harmonize it, and build the Krea 2 reference for a 360 pano (from ComfyUI-Mickmumpitz-Nodes, `pano/`). |
+| **MpiAudioSeparation** | Split a track into bass, drums, other and vocals with Hybrid Demucs v3 (from audio-separation-nodes-comfyui, `stems/`; torchaudio fetches the weight on first use). |
+| **MpiRifeVFI** | RIFE 4.7 frame interpolation (from ComfyUI-Frame-Interpolation, `rife/`). Never downloads: `rife47.pth` is read from `models/rife/`, or from the old pack's `ckpts/rife/` folder. |
+
 ---
 
 ## License
