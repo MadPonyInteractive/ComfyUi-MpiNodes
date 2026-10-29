@@ -510,6 +510,23 @@ def plan_context(total_steps: int, wanted_frames: int):
     return 0, 0, 0
 
 
+def plan_head(total_steps: int, wanted_frames: int):
+    """Pick the HEAD of a clip that is a valid context length -- `plan_context`
+    from the other end, for a bridge's tail (the next clip's opening).
+
+    The head always starts on the period's 1-frame step, so its span is
+    `latent_frames(steps)`; it only fits where the target's tail starts on one
+    too, which the caller checks.
+    """
+    for steps in range(min(total_steps, max(1, wanted_frames)), 0, -1):
+        frames = latent_frames(steps)
+        if frames > wanted_frames:
+            continue
+        if is_valid_context(frames):
+            return steps, frames, frames * AUDIO_LATENT_FPS // FPS_I
+    return 0, 0, 0
+
+
 FPS_I = 24
 
 
@@ -701,6 +718,19 @@ class MpiH3MaskedPrefix:
                     },
                 ),
             },
+            "optional": {
+                "tail_latent": ("LATENT", {"tooltip": "BRIDGE mode: the NEXT clip as an AV latent. Its opening is written into the END of the target and masked too, so only the middle is generated and it has to join both clips. Same canvas. The target's length must divide by 3 (39 / 90 / 141 / 192 / 243 ...) so the audio tail lands on a whole step."}),
+                "tail_frames": (
+                    "INT",
+                    {
+                        "default": 39,
+                        "min": 39,
+                        "max": 1000,
+                        "step": 51,
+                        "tooltip": "How much of the next clip's opening to keep, in frames. Snapped DOWN like context_frames. Ignored without tail_latent.",
+                    },
+                ),
+            },
         }
 
     RETURN_TYPES = ("LATENT", "INT", "INT", "STRING")
@@ -718,11 +748,13 @@ class MpiH3MaskedPrefix:
         "reported rather than assumed. The output latent carries a nested video+audio "
         "noise mask (0 preserve, 1 generate) that core's sampler already understands. "
         "Do NOT put a first-frame guide inside the preserved head - it fights the prefix "
-        "that already owns those frames."
+        "that already owns those frames. With `tail_latent` it BRIDGES: the next clip's "
+        "opening is written into the end and masked as well, so only the middle is "
+        "generated, joining both clips. `new_frames` is then that middle."
     )
     FUNCTION = "doit"
 
-    def doit(self, latent, context_latent, context_frames):
+    def doit(self, latent, context_latent, context_frames, tail_latent=None, tail_frames=39):
         # Imported here, not at module scope, so the pack still loads on a
         # ComfyUI without H3 -- same reason as MpiH3References.
         import torch
@@ -763,10 +795,21 @@ class MpiH3MaskedPrefix:
                 f"context has {ctx_a.shape[-1]}, target has {target_a.shape[-1]}."
             )
 
+        total_steps = target_v.shape[2]
+        total_frames = latent_frames(total_steps)
+        t_steps = t_frames = t_audio = 0
+        if tail_latent is not None:
+            t_steps, t_frames, t_audio = self._plan_tail(
+                tail_latent, target_v, target_a, total_steps, total_frames, steps, tail_frames)
+
         out_v = target_v.clone()
         out_a = target_a.clone()
         out_v[:, :, :steps] = ctx_v[:, :, ctx_v.shape[2] - steps:].to(out_v)
         out_a[..., :audio_steps] = ctx_a[..., ctx_a.shape[-1] - audio_steps:].to(out_a)
+        if t_steps:
+            tail_v, tail_a = _unpack_av(tail_latent, "tail_latent")
+            out_v[:, :, total_steps - t_steps:] = tail_v[:, :, :t_steps].to(out_v)
+            out_a[..., out_a.shape[-1] - t_audio:] = tail_a[..., :t_audio].to(out_a)
 
         # Built at the latent's own resolution on purpose. core's reshape_mask
         # INTERPOLATES a mask that does not match (trilinear for video, bilinear
@@ -775,17 +818,64 @@ class MpiH3MaskedPrefix:
         mask_a = torch.ones((1, 1) + tuple(out_a.shape[2:]), dtype=torch.float32)
         mask_v[:, :, :steps] = 0.0
         mask_a[..., :audio_steps] = 0.0
+        if t_steps:
+            mask_v[:, :, total_steps - t_steps:] = 0.0
+            mask_a[..., mask_a.shape[-1] - t_audio:] = 0.0
 
-        new_frames = tail_span(out_v.shape[2], out_v.shape[2]) - frames
+        new_frames = total_frames - frames - t_frames
         report = (
             f"context {frames} frames ({steps} latent steps, {audio_steps} audio steps)"
             f" + {new_frames} new; asked for {context_frames}"
         )
+        if t_steps:
+            report += (f"; tail {t_frames} frames ({t_steps} latent steps, {t_audio} audio steps),"
+                       f" asked for {tail_frames}")
 
         out = dict(latent)
         out["samples"] = comfy.nested_tensor.NestedTensor((out_v, out_a))
         out["noise_mask"] = comfy.nested_tensor.NestedTensor((mask_v, mask_a))
         return (out, frames, new_frames, report)
+
+    @staticmethod
+    def _plan_tail(tail_latent, target_v, target_a, total_steps, total_frames, head_steps, tail_frames):
+        """Size the bridge tail, or raise. Both checks below fail silently if skipped:
+        an off-phase tail decodes the next clip's opening a step early, and an
+        off-clock audio tail slides the next clip's voice against its lips."""
+        tail_v, tail_a = _unpack_av(tail_latent, "tail_latent")
+        if tail_v.shape[0] != 1:
+            raise ValueError("MiniMax H3 is batch size 1 on both streams.")
+        if tail_v.shape[3:] != target_v.shape[3:]:
+            raise ValueError(
+                "The tail clip and the target must share a canvas: tail is "
+                f"{tail_v.shape[4] * 16}x{tail_v.shape[3] * 16}, target is "
+                f"{target_v.shape[4] * 16}x{target_v.shape[3] * 16}."
+            )
+        t_steps, t_frames, t_audio = plan_head(tail_v.shape[2], snap_context_frames(tail_frames))
+        if t_steps == 0:
+            raise ValueError(f"The tail clip ({latent_frames(tail_v.shape[2])} frames) is shorter "
+                             "than the 39-frame minimum.")
+        # The head's step 0 is the period's 1-frame step; the target's tail
+        # must start on one too, or every tail step decodes the wrong span.
+        if (total_steps - t_steps) % 5:
+            raise ValueError(
+                f"A {total_frames}-frame target cannot hold a tail on the VAE's packing phase. "
+                "Use a target length on H3's 17k+5 grid (124, 141, 192 ...)."
+            )
+        audio_start = (total_frames - t_frames) * AUDIO_LATENT_FPS / FPS_I
+        if audio_start != int(audio_start) or target_a.shape[-1] - t_audio != audio_start:
+            raise ValueError(
+                f"A {total_frames}-frame target does not end on a whole audio step, so the tail's "
+                "audio would slide against its picture. Use a length that divides by 3: "
+                "39, 90, 141, 192, 243 ..."
+            )
+        if t_audio > tail_a.shape[-1]:
+            raise ValueError(f"The tail clip's audio holds {tail_a.shape[-1]} steps, the tail needs {t_audio}.")
+        if head_steps + t_steps >= total_steps:
+            raise ValueError(
+                f"A {latent_frames(head_steps)}-frame context and a {t_frames}-frame tail leave "
+                f"nothing to generate in a {total_frames}-frame target."
+            )
+        return t_steps, t_frames, t_audio
 
 
 def latent_frames(steps: int) -> int:
