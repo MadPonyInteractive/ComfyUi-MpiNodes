@@ -1,6 +1,4 @@
 """Nodes ported from ComfyUI-KJNodes and color-matcher for Cubric Studio (MPI-1341).
-
-Not registered in the pack's __init__.py yet; the swap-over phase does that.
 """
 from . import image, ltx, lora_extract
 

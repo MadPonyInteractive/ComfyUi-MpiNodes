@@ -288,6 +288,19 @@ Ported with unchanged behaviour so Cubric Studio can drop three single-use packs
 | **MpiAudioSeparation** | Split a track into bass, drums, other and vocals with Hybrid Demucs v3 (from audio-separation-nodes-comfyui, `stems/`; torchaudio fetches the weight on first use). |
 | **MpiRifeVFI** | RIFE 4.7 frame interpolation (from ComfyUI-Frame-Interpolation, `rife/`). Never downloads: `rife47.pth` is read from `models/rife/`, or from the old pack's `ckpts/rife/` folder. |
 
+### KJ image, mask and LTX helpers
+
+Ported from ComfyUI-KJNodes (GPL-3.0) and color-matcher with unchanged inputs, so Cubric Studio can drop the pack (`kj/`, licences beside the port). Only the code paths Cubric Studio reaches are carried.
+
+| Node | Description |
+|---|---|
+| **MpiImageResize** | Resize an image (and optional mask) to a width/height with crop, pad, stretch or keep-proportion (was ImageResizeKJv2). |
+| **MpiImageRange** / **MpiImageBatchMulti** / **MpiImageBatchExtend** / **MpiImageConcat** | Take a frame range from a batch, join several batches, extend a batch with a cross-faded overlap, concatenate two images (were GetImageRangeFromBatch, ImageBatchMulti, ImageBatchExtendWithOverlap, ImageConcanate). |
+| **MpiGrowMaskBlur** | Grow or shrink a mask, fill holes and blur it (was GrowMaskWithBlur). |
+| **MpiColorMatch** | Match an image's colours to a reference, MKL method (was ColorMatch). |
+| **MpiLTX2NAG** / **MpiLTXAudioVideoMask** / **MpiVAELoader** | LTX 2 normalized attention guidance, audio/video latent masks, and a VAE loader with device and dtype (were LTX2_NAG, LTXVAudioVideoMask, VAELoaderKJ). |
+| **MpiLoraExtract** | Extract a LoRA from the difference of two models by SVD (was LoraExtractKJ). |
+
 ---
 
 ## License
