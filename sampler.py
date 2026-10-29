@@ -53,6 +53,74 @@ def frames_to_latent(frames, grid, ratio, cap):
     return t
 
 
+GIB = 1024 ** 3
+
+# What a 16 GB card gives the sampler: 16 GB is 15.9 GiB, less what the desktop
+# or a second process holds. Inside this band the measured ladder is returned
+# unscaled, so desktop noise on the card it was measured on changes nothing.
+REF_USABLE = (14 * GIB, 16 * GIB)
+
+
+def ladder_16gb(area):
+    """Window ceiling in VIDEO frames a 16 GB card refines H3 at, for `area`
+    output pixels (width * height of the latent being sampled).
+
+    Measured, not modelled: this is the MpiMath expression Cubric Studio's H3
+    graphs carried, `100000 if a * b < 850000 else (243 if a * b < 1100000 else
+    (90 if a * b < 6000000 else 39))`. 100000 means "never window".
+    """
+    if area < 850000:
+        return 100000
+    if area < 1100000:
+        return 243
+    if area < 6000000:
+        return 90
+    return 39
+
+
+def memory_scale(usable):
+    """How much more (or less) a card holds than the 16 GB one the ladder was
+    measured on. 1 inside `REF_USABLE`, and scaled from the nearer band edge
+    outside it, so the curve has no step."""
+    low, high = REF_USABLE
+    if usable < low:
+        return usable / low
+    if usable > high:
+        return usable / high
+    return 1.0
+
+
+def auto_window_frames(area, usable):
+    """The 16 GB ladder, scaled by the engine's usable VRAM.
+
+    Activation memory grows linearly with the tokens in a window, so the window
+    scales with the memory there is to hold them. On a smaller card the
+    "never window" bucket takes the 243-frame bucket's ceiling instead: a smaller
+    picture always fits at least what a larger one does.
+    """
+    scale = memory_scale(usable)
+    frames = ladder_16gb(area)
+    if scale == 1.0:
+        return frames
+    if frames == 100000:
+        if scale > 1.0:
+            return frames
+        frames = 243
+    return max(1, int(frames * scale))
+
+
+def usable_vram(device):
+    """Bytes the sampler could have on `device` if ComfyUI evicted every model:
+    free memory plus what loaded models hold. What else holds the card (the
+    desktop, another process) is not counted, which is the point. On a RunPod
+    Pod this runs on the Pod's engine, so it measures the Pod's GPU."""
+    free = comfy.model_management.get_free_memory(device)
+    held = sum(m.model_loaded_memory()
+               for m in comfy.model_management.current_loaded_models
+               if m.device == device)
+    return free + held
+
+
 def plan_windows(total, window, overlap, grid=1):
     """Cover [0, total) with windows of AT MOST `window` frames, overlapping.
 
@@ -241,11 +309,13 @@ class MpiWindowedSampler:
                 "sigmas": ("SIGMAS",),
                 "latent_image": ("LATENT",),
                 "window_frames": ("INT", {
-                    "default": 90, "min": 1, "max": 100000,
+                    "default": 0, "min": 0, "max": 100000,
                     "tooltip": "CEILING on the VIDEO frames refined at once, not a "
-                               "target. This is the number you discover by hitting an "
+                               "target. 0 = AUTO: sized from the engine GPU's usable "
+                               "VRAM, using the ceilings measured for MiniMax H3 on a "
+                               "16GB card (90 at 2K) scaled to this card. Otherwise "
+                               "this is the number you discover by hitting an "
                                "OOM: if 124 frames dies and 90 survives, put 90 here. "
-                               "90 is what a 16GB card manages for MiniMax H3 at 2K. "
                                "Windows are then shrunk to the smallest legal size "
                                "that still covers the clip in the same number of "
                                "passes, so a generous ceiling costs nothing and a low "
@@ -308,9 +378,17 @@ class MpiWindowedSampler:
         # The model itself says how many video frames a latent frame carries, so
         # the widgets can be in the unit an OOM is actually measured in without
         # asking the user for a second number.
-        ratio = getattr(getattr(guider.model_patcher.model, "latent_format", None),
-                        "temporal_downscale_ratio", 1)
-        window = max(1, frames_to_latent(window_frames, grid, ratio, total))
+        latent_format = getattr(guider.model_patcher.model, "latent_format", None)
+        ratio = getattr(latent_format, "temporal_downscale_ratio", 1)
+        ceiling, source = window_frames, "set on the widget"
+        if window_frames <= 0:
+            spatial = getattr(latent_format, "spacial_downscale_ratio", 8)
+            area = video.shape[-1] * video.shape[-2] * spatial * spatial
+            usable = usable_vram(guider.model_patcher.load_device)
+            ceiling = auto_window_frames(area, usable)
+            source = (f"auto: {usable / GIB:.1f} GiB usable VRAM = x"
+                      f"{memory_scale(usable):.2f} the 16 GB ladder at {area} px")
+        window = max(1, frames_to_latent(ceiling, grid, ratio, total))
         overlap = frames_to_latent(overlap_frames, grid, ratio, max(0, window - 1))
 
         spans = plan_windows(total, window, overlap, grid)
@@ -326,7 +404,7 @@ class MpiWindowedSampler:
         if len(spans) == 1:
             info = (f"single pass: {total} latent frames "
                     f"({latent_to_frames(total, grid, ratio)} video), at or under the "
-                    f"{window_frames}-frame ceiling, so nothing was windowed")
+                    f"{ceiling}-frame ceiling ({source}), so nothing was windowed")
             print(f"[MpiWindowedSampler] {info}")
             out, out_denoised = self._sample_once(
                 guider, sampler, sigmas, latent, full_noise, noise.seed, disable_pbar)
@@ -341,8 +419,8 @@ class MpiWindowedSampler:
             f"frames ({planned} latent), sharing "
             f"{latent_to_frames(shared, grid, ratio)} video frames ({shared} latent). "
             f"Clip is {latent_to_frames(total, grid, ratio)} video frames ({total} "
-            f"latent). You asked for a {window_frames}-frame ceiling and "
-            f"{overlap_frames} frames of overlap; grid {grid}, "
+            f"latent). Ceiling {ceiling} frames ({source}), "
+            f"{overlap_frames} frames of overlap asked; grid {grid}, "
             f"{ratio} video frames per latent frame. spans={spans}")
         print(f"[MpiWindowedSampler] {info}")
 
