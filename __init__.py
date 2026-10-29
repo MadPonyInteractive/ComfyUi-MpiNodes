@@ -120,6 +120,10 @@ from .preview import MpiVideoSamplingPreview, MpiTinyVaeLoader
 from .splat import MpiBrushTrain
 from .scene import MpiPanoDepth, MpiLiftDepth, MpiWrapPad, MpiWrapCrop, MpiWrapSoften, MpiWrapCutMerge
 from .grade import MpiGradeMatch, MpiGradeBack
+from .detailer import (
+    NODE_CLASS_MAPPINGS as DETAILER_CLASS_MAPPINGS,
+    NODE_DISPLAY_NAME_MAPPINGS as DETAILER_DISPLAY_NAME_MAPPINGS,
+)
 
 # TEST NODES
 # from .dynamic_combo import MpiDynamicCombo
@@ -411,6 +415,9 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiGradeMatch": "Mpi Grade Match",
     "MpiGradeBack": "Mpi Grade Back",
 }
+
+NODE_CLASS_MAPPINGS.update(DETAILER_CLASS_MAPPINGS)
+NODE_DISPLAY_NAME_MAPPINGS.update(DETAILER_DISPLAY_NAME_MAPPINGS)
 
 WEB_DIRECTORY = "./web"
 
