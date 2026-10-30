@@ -109,7 +109,7 @@ from .multi_text import (
 from .wan import MpiWanFrames, MpiWanSeconds
 from .wan_masked import MpiWanMaskedVideo
 from .speech import MpiSpeechToText
-from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3ImageToVideo, MpiH3Length, MpiH3MaskedPrefix, MpiH3References
+from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3ImageToVideo, MpiH3Length, MpiH3MaskedPrefix, MpiH3PinFirstFrame, MpiH3References
 from .bernini import MpiBerniniConditioning, MpiBerniniLength
 from .flux3 import MpiFlux3References
 from .vram import MpiClearVram, MpiClearVramEnd
@@ -272,6 +272,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiH3ImageToVideo": MpiH3ImageToVideo,
     "MpiH3Length": MpiH3Length,
     "MpiH3MaskedPrefix": MpiH3MaskedPrefix,
+    "MpiH3PinFirstFrame": MpiH3PinFirstFrame,
     "MpiH3References": MpiH3References,
     "MpiBerniniConditioning": MpiBerniniConditioning,
     "MpiBerniniLength": MpiBerniniLength,
@@ -416,6 +417,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiH3ImageToVideo": "Mpi H3 Image To Video",
     "MpiH3Length": "Mpi H3 Length",
     "MpiH3MaskedPrefix": "Mpi H3 Masked Prefix",
+    "MpiH3PinFirstFrame": "Mpi H3 Pin First Frame",
     "MpiH3References": "Mpi H3 References",
     "MpiBerniniConditioning": "Mpi Bernini Conditioning",
     "MpiBerniniLength": "Mpi Bernini Length",

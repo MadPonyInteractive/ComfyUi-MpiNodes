@@ -878,6 +878,70 @@ class MpiH3MaskedPrefix:
         return t_steps, t_frames, t_audio
 
 
+class MpiH3PinFirstFrame:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "latent": ("LATENT", {"tooltip": "The TARGET AV latent - straight from MiniMaxH3ReferenceToVideo, MiniMaxH3ImageToVideo or EmptyMiniMaxH3LatentAV. A noise mask already on it (MpiH3MaskedPrefix) is kept."}),
+                "first_frame": ("LATENT", {"tooltip": "The frame to start on, encoded: one image through the video VAE (1 latent step), or any H3 latent - video-only or AV - whose FIRST frame is the one wanted (e.g. a sibling clip's saved latent). Same canvas."}),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT",)
+    RETURN_NAMES = ("latent",)
+    CATEGORY = "MpiNodes/Utils"
+    DESCRIPTION = (
+        "Pin a MiniMax H3 clip's first frame: writes one encoded frame into latent step 0 "
+        "and masks that step out of sampling, video only - the audio stays fully generated. "
+        "Step 0 is the VAE's 1-frame step, so one image is exactly one step and the pin "
+        "is phase-exact; nothing to trim. Reference-to-video sets no keyframe, so the same "
+        "seed, length and canvas still open on a different framing per prompt; clips that "
+        "must join (Infinite Video roots) share a framing only when they share frame 0."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, latent, first_frame):
+        import torch
+        import comfy.nested_tensor
+
+        target_v, target_a = _unpack_av(latent, "latent")
+        samples = first_frame.get("samples") if isinstance(first_frame, dict) else None
+        if samples is None:
+            raise ValueError("`first_frame` is not a latent.")
+        frame_v = samples.tensors[0] if getattr(samples, "is_nested", False) else samples
+        if frame_v.ndim != 5 or frame_v.shape[0] != 1 or target_v.shape[0] != 1:
+            raise ValueError("`first_frame` must be one encoded H3 video latent, batch size 1.")
+        if frame_v.shape[1] != target_v.shape[1]:
+            raise ValueError(
+                f"`first_frame` has {frame_v.shape[1]} latent channels, the target {target_v.shape[1]}: "
+                "encode the image with the H3 video VAE."
+            )
+        if frame_v.shape[3:] != target_v.shape[3:]:
+            raise ValueError(
+                "The first frame and the target must share a canvas: frame is "
+                f"{frame_v.shape[4] * 16}x{frame_v.shape[3] * 16}, target is "
+                f"{target_v.shape[4] * 16}x{target_v.shape[3] * 16}."
+            )
+
+        out_v = target_v.clone()
+        out_v[:, :, :1] = frame_v[:, :, :1].to(out_v)
+
+        mask = latent.get("noise_mask")
+        if mask is not None and getattr(mask, "is_nested", False):
+            mask_v, mask_a = (m.clone() for m in mask.tensors)
+        else:
+            # Same reason as MpiH3MaskedPrefix: built at the latent's own resolution.
+            mask_v = torch.ones((1, 1) + tuple(out_v.shape[2:]), dtype=torch.float32)
+            mask_a = torch.ones((1, 1) + tuple(target_a.shape[2:]), dtype=torch.float32)
+        mask_v[:, :, :1] = 0.0
+
+        out = dict(latent)
+        out["samples"] = comfy.nested_tensor.NestedTensor((out_v, target_a))
+        out["noise_mask"] = comfy.nested_tensor.NestedTensor((mask_v, mask_a))
+        return (out,)
+
+
 def latent_frames(steps: int) -> int:
     """Pixel frames a video latent of `steps` steps decodes back to."""
     return frame_spans(steps)[-1][1] if steps else 0
