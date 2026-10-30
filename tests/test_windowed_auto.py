@@ -2,10 +2,9 @@
 
     G:/ComfyUi/python_embeded/python.exe tests/test_windowed_auto.py
 
-On a 16 GB card the automatic window must be IDENTICAL to the "Window Frames" MpiMath
-ladder Cubric Studio's H3 graphs carried before it (Cubric Studio MPI-1350). The ladder
-string is evaluated here through the same `safe_math` MpiMath runs, so the comparison is
-against what the graphs actually computed, not a retyping of it.
+The ceiling must land inside what MiniMax H3 refines were MEASURED to do (Cubric Studio
+MPI-1350, RTX 4060 Ti 16 GB, and the same card held down to 12 GB): never above the
+largest pass that still ran at full speed, and not needlessly far below it.
 """
 import os
 import sys
@@ -25,64 +24,61 @@ mm = sys.modules["comfy.model_management"]
 sys.modules["comfy"].model_management = mm
 
 import sampler  # noqa: E402
-from help_funcs import safe_math  # noqa: E402
 
 GIB = sampler.GIB
-LADDER = "100000 if a * b < 850000 else (243 if a * b < 1100000 else (90 if a * b < 6000000 else 39))"
+P2K = 1152 * 2048  # 2.36 M px
+P1M = 768 * 1344   # 1.03 M px
 
-# Every bucket edge from both sides, plus the sizes the H3 graphs really sample (each
-# side a multiple of 32): 640x360, 960x544, 1280x720, 1920x1088, 2560x1440, 3840x2176.
-SIZES = [(1, 1), (640, 360), (960, 544), (1280, 720), (1920, 1088), (2560, 1440), (3840, 2176)]
-AREAS = [w * h for w, h in SIZES] + [849999, 850000, 850001, 1099999, 1100000, 1100001,
-                                     5999999, 6000000, 6000001, 50_000_000]
-
-# What a 16 GB card shows the sampler: 15.99 GiB bare (Linux Pod), down to ~14 GiB with a
-# busy Windows desktop.
-USABLE_16GB = [14 * GIB, 14.5 * GIB, 15 * GIB, 15.5 * GIB, 15.92 * GIB, 15.99 * GIB, 16 * GIB]
-
-
-def ladder(area):
-    return safe_math(LADDER, {"a": area, "b": 1, "c": 0})
+# (output px, usable GiB auto saw, largest full-speed pass, smallest pass that failed or crawled)
+MEASURED = [
+    (P2K, 10.5, 124, 141),   # 12 GB: 141 streamed weights over PCIe, 3x slower a frame
+    (P2K, 10.0, 124, 141),   # the same card on a busier desktop
+    (P2K, 14.6, 192, 209),   # 16 GB: 209 ran out of memory
+    (P1M, 14.7, 447, None),  # 16 GB: never failed up to 447
+]
 
 
-def test_16gb_matches_the_ladder_exactly():
-    for usable in USABLE_16GB:
-        for area in AREAS:
-            got = sampler.auto_window_frames(area, usable)
-            assert got == ladder(area), (usable / GIB, area, got, ladder(area))
-            assert type(got) is int, type(got)
+def test_never_above_what_ran_at_full_speed():
+    for area, usable, ok, bad in MEASURED:
+        got = sampler.auto_window_frames(area, usable * GIB)
+        assert got <= ok, (area, usable, got, ok)
+        if bad:
+            assert got < bad, (area, usable, got, bad)
+        assert type(got) is int, type(got)
 
 
-def test_ladder_helper_is_the_graph_expression():
-    for area in AREAS + list(range(849_990, 850_010)) + list(range(1_099_990, 1_100_010)) \
-            + list(range(5_999_990, 6_000_010)):
-        assert sampler.ladder_16gb(area) == ladder(area), area
+def test_stops_at_the_fastest_size():
+    # Past ~250 M px-frames a bigger window costs more per frame, so a card that holds
+    # more (16 GB holds ~172 at 2K) still stops near 105. The old ladder gave 90.
+    assert 100 <= sampler.auto_window_frames(P2K, 14.6 * GIB) <= 110
+    assert 100 <= sampler.auto_window_frames(P2K, 22 * GIB) <= 110
+    # A 12 GB card gets the same: the old ladder scaled it down to 64.
+    assert 100 <= sampler.auto_window_frames(P2K, 10.5 * GIB) <= 110
+    # The old ladder never windowed under 850 k px: a long 960x544 clip is split now.
+    assert sampler.auto_window_frames(960 * 544, 48 * GIB) < 600
 
 
-def test_scales_with_memory_outside_the_band():
-    area = 2560 * 1440  # the 90-frame bucket
-    assert sampler.auto_window_frames(area, 24 * GIB) == int(90 * 24 / 16)
-    assert sampler.auto_window_frames(area, 80 * GIB) == int(90 * 80 / 16)
-    assert sampler.auto_window_frames(area, 12 * GIB) == int(90 * 12 / 14)
-    # No step at the band edges: just outside is within a frame of just inside.
-    for edge in sampler.REF_USABLE:
-        for bump in (-1, 1):
-            near = sampler.auto_window_frames(area, edge + bump * 1024 ** 2)
-            assert abs(near - 90) <= 1, (edge / GIB, bump, near)
-    # Monotonic in memory, at every bucket.
-    for a in AREAS:
+def test_overlap_floor_only_where_the_card_holds_it():
+    # 4K on 16 GB: 250 M px-frames is 29 frames, mostly overlap; the card holds ~48.
+    got = sampler.auto_window_frames(3840 * 2176, 14.6 * GIB)
+    assert 45 <= got <= 51, got
+    # On 12 GB the card holds ~31: memory wins over the floor.
+    assert sampler.auto_window_frames(3840 * 2176, 10.5 * GIB) <= 32
+    # A wider overlap raises the floor.
+    assert sampler.auto_window_frames(3840 * 2176, 48 * GIB, overlap_frames=25) == 75
+
+
+def test_monotonic_and_floor():
+    for area in (1, 640 * 360, P1M, P2K, 2560 * 1440, 3840 * 2176, 50_000_000):
         prev = 0
-        for gib in range(2, 97):
-            got = sampler.auto_window_frames(a, gib * GIB)
-            assert got >= prev, (a, gib, got, prev)
+        for tenth in range(0, 961):
+            got = sampler.auto_window_frames(area, tenth / 10 * GIB)
+            assert got >= prev, (area, tenth, got, prev)
             prev = got
-
-
-def test_never_window_bucket():
-    small = 640 * 360
-    assert sampler.auto_window_frames(small, 48 * GIB) == 100000
-    # A smaller card cannot promise a whole clip: it takes the 243 bucket's ceiling, scaled.
-    assert sampler.auto_window_frames(small, 7 * GIB) == int(243 * 7 / 14)
+        for usable in (2, 8, 16, 48):  # a bigger picture never gets a longer window
+            assert sampler.auto_window_frames(area, usable * GIB) <= sampler.auto_window_frames(
+                max(1, area // 2), usable * GIB)
+    assert sampler.auto_window_frames(P2K, 0) == 1
     assert sampler.auto_window_frames(1, 0) == 1
 
 
@@ -102,9 +98,9 @@ def test_usable_vram_counts_evictable_models_on_the_same_device():
 
 
 if __name__ == "__main__":
-    test_16gb_matches_the_ladder_exactly()
-    test_ladder_helper_is_the_graph_expression()
-    test_scales_with_memory_outside_the_band()
-    test_never_window_bucket()
+    test_never_above_what_ran_at_full_speed()
+    test_stops_at_the_fastest_size()
+    test_overlap_floor_only_where_the_card_holds_it()
+    test_monotonic_and_floor()
     test_usable_vram_counts_evictable_models_on_the_same_device()
     print("ok")

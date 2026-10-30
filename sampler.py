@@ -55,58 +55,36 @@ def frames_to_latent(frames, grid, ratio, cap):
 
 GIB = 1024 ** 3
 
-# What a 16 GB card gives the sampler: 16 GB is 15.9 GiB, less what the desktop
-# or a second process holds. Inside this band the measured ladder is returned
-# unscaled, so desktop noise on the card it was measured on changes nothing.
-REF_USABLE = (14 * GIB, 16 * GIB)
+# Both measured on MiniMax H3 refines (Cubric Studio MPI-1350), in PIXEL-FRAMES:
+# video frames x output pixels. Step time and activation memory follow that one
+# number, whatever the picture size: 107 frames at 2.36 M px and 243 at 1.03 M px
+# cost the same 111-112 s a step.
+#
+# Speed: the attention term makes a step grow faster than its frames. On the
+# 16 GB card, time per NEW frame (17 shared with the next window) rose from 1.24 s
+# a step at 252 M px-frames to 1.61 s at 453 M. Below ~250 M window size barely
+# matters: 124 frames at 2K took 471 s in one pass and 468 s in three 56-frame
+# windows. So a window stops at FASTEST_PX_FRAMES, the fewest seams for no time.
+FASTEST_PX_FRAMES = 250e6
+# Memory: the largest pass that still ran at full speed was 293 M px-frames on a
+# 12 GB card (10.5 GiB usable; 333 M streamed weights over PCIe at 3x the time)
+# and 453 M on a 16 GB card (14.6 GiB; 493 M ran out of memory). That line is
+# 39 M px-frames per GiB above 3 GiB the engine keeps for itself; 0.9 of it.
+FIXED_GIB = 3.0
+PX_FRAMES_PER_GIB = 0.9 * 39e6
+# A window of 29 frames at 4K shares 17 of them with the next: most of each pass
+# would be redone overlap. Where the card holds more, a window is at least this
+# many times the overlap.
+MIN_OVERLAPS = 3
 
 
-def ladder_16gb(area):
-    """Window ceiling in VIDEO frames a 16 GB card refines H3 at, for `area`
-    output pixels (width * height of the latent being sampled).
-
-    Measured, not modelled: this is the MpiMath expression Cubric Studio's H3
-    graphs carried, `100000 if a * b < 850000 else (243 if a * b < 1100000 else
-    (90 if a * b < 6000000 else 39))`. 100000 means "never window".
-    """
-    if area < 850000:
-        return 100000
-    if area < 1100000:
-        return 243
-    if area < 6000000:
-        return 90
-    return 39
-
-
-def memory_scale(usable):
-    """How much more (or less) a card holds than the 16 GB one the ladder was
-    measured on. 1 inside `REF_USABLE`, and scaled from the nearer band edge
-    outside it, so the curve has no step."""
-    low, high = REF_USABLE
-    if usable < low:
-        return usable / low
-    if usable > high:
-        return usable / high
-    return 1.0
-
-
-def auto_window_frames(area, usable):
-    """The 16 GB ladder, scaled by the engine's usable VRAM.
-
-    Activation memory grows linearly with the tokens in a window, so the window
-    scales with the memory there is to hold them. On a smaller card the
-    "never window" bucket takes the 243-frame bucket's ceiling instead: a smaller
-    picture always fits at least what a larger one does.
-    """
-    scale = memory_scale(usable)
-    frames = ladder_16gb(area)
-    if scale == 1.0:
-        return frames
-    if frames == 100000:
-        if scale > 1.0:
-            return frames
-        frames = 243
-    return max(1, int(frames * scale))
+def auto_window_frames(area, usable, overlap_frames=17):
+    """Window ceiling in VIDEO frames for `area` output pixels (width * height of
+    the latent being sampled) on an engine with `usable` bytes of VRAM: the
+    fastest size, or the most the card holds at full speed if that is less."""
+    holds = max(0.0, usable / GIB - FIXED_GIB) * PX_FRAMES_PER_GIB / max(1, area)
+    fastest = max(FASTEST_PX_FRAMES / max(1, area), MIN_OVERLAPS * overlap_frames)
+    return max(1, int(min(holds, fastest)))
 
 
 def usable_vram(device):
@@ -312,8 +290,8 @@ class MpiWindowedSampler:
                     "default": 0, "min": 0, "max": 100000,
                     "tooltip": "CEILING on the VIDEO frames refined at once, not a "
                                "target. 0 = AUTO: sized from the engine GPU's usable "
-                               "VRAM, using the ceilings measured for MiniMax H3 on a "
-                               "16GB card (90 at 2K) scaled to this card. Otherwise "
+                               "VRAM and picture size: the fastest window the card "
+                               "holds, from MiniMax H3 measurements. Otherwise "
                                "this is the number you discover by hitting an "
                                "OOM: if 124 frames dies and 90 survives, put 90 here. "
                                "Windows are then shrunk to the smallest legal size "
@@ -385,9 +363,8 @@ class MpiWindowedSampler:
             spatial = getattr(latent_format, "spacial_downscale_ratio", 8)
             area = video.shape[-1] * video.shape[-2] * spatial * spatial
             usable = usable_vram(guider.model_patcher.load_device)
-            ceiling = auto_window_frames(area, usable)
-            source = (f"auto: {usable / GIB:.1f} GiB usable VRAM = x"
-                      f"{memory_scale(usable):.2f} the 16 GB ladder at {area} px")
+            ceiling = auto_window_frames(area, usable, overlap_frames)
+            source = f"auto: {usable / GIB:.1f} GiB usable VRAM at {area} px"
         window = max(1, frames_to_latent(ceiling, grid, ratio, total))
         overlap = frames_to_latent(overlap_frames, grid, ratio, max(0, window - 1))
 
