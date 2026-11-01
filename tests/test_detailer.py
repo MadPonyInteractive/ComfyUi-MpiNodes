@@ -502,6 +502,25 @@ def test_every_workflow_input_is_accepted_by_the_ported_node():
             sys.modules.pop(name, None)
 
 
+def test_sample_size_never_exceeds_max_size():
+    from detailer.detail import sample_size
+    # MaskDetailer settings: guide 512 by bbox, crop_factor 1.8, force_inpaint on
+    # a face cut 1:1 out of a 16K photo (MPI-1392) shrinks to the cap instead of sampling at 3375
+    up, w, h = sample_size(3375, 3216, (0, 0, 1875, 1787), 512, True, 1024, True)
+    assert max(w, h) == 1024 and up < 1.0, (up, w, h)
+    up, w, h = sample_size(3375, 3216, (0, 0, 1875, 1787), 512, True, 1536, True)
+    assert max(w, h) == 1536, (w, h)
+    # a crop already under the cap keeps its own size
+    assert sample_size(900, 700, (0, 0, 600, 600), 512, True, 1024, True) == (1.0, 900, 700)
+    # a small crop is still enlarged, up to the cap
+    up, w, h = sample_size(360, 360, (0, 0, 200, 200), 512, True, 1024, True)
+    assert (w, h) == (921, 921), (w, h)
+    up, w, h = sample_size(720, 720, (0, 0, 200, 200), 512, True, 1024, True)
+    assert (w, h) == (1024, 1024), (w, h)
+    # without force_inpaint a crop that would not be enlarged is skipped, as before
+    assert sample_size(3375, 3216, (0, 0, 1875, 1787), 512, True, 1024, False) is None
+
+
 if __name__ == "__main__":
     tests = [(k, v) for k, v in sorted(globals().items()) if k.startswith("test_") and callable(v)]
     for name, fn in tests:

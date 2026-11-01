@@ -150,29 +150,12 @@ def apply_differential_diffusion(model):
     return nodes_differential_diffusion.DifferentialDiffusion.execute(model)[0]
 
 
-def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max_size, bbox, seed, steps, cfg,
-                   sampler_name, scheduler, positive, negative, denoise, noise_mask, force_inpaint,
-                   wildcard_opt=None, wildcard_opt_concat_mode=None, cycle=1, inpaint_model=False,
-                   noise_mask_feather=0, vae_tiled_encode=False, vae_tiled_decode=False):
-    """Enlarge one crop to guide_size, resample it, decode, shrink back. (None) when the SEG is skipped."""
-    import comfy.model_management as mm
-    import nodes
+def sample_size(w, h, bbox, guide_size, guide_size_for_bbox, max_size, force_inpaint):
+    """(upscale, new_w, new_h) the crop is sampled at, or None when the SEG is skipped.
 
-    if noise_mask is not None:
-        noise_mask = S.tensor_gaussian_blur_mask(noise_mask, noise_mask_feather)
-        noise_mask = noise_mask.squeeze(3)
-
-    if wildcard_opt is not None and wildcard_opt != "":
-        wildcard_positive = encode_wildcard_prompt(wildcard_opt, clip)
-
-        if wildcard_opt_concat_mode == "concat":
-            positive = nodes.ConditioningConcat().concat(positive, wildcard_positive)[0]
-        else:
-            positive = wildcard_positive
-
-    h = image.shape[1]
-    w = image.shape[2]
-
+    max_size caps the SAMPLED size. With force_inpaint a crop larger than max_size shrinks to it
+    (Impact sampled it at native size: 3375 px for a face cut 1:1 out of a 16K photo, MPI-1392);
+    a crop already under max_size keeps its own size."""
     bbox_h = bbox[3] - bbox[1]
     bbox_w = bbox[2] - bbox[0]
 
@@ -207,9 +190,42 @@ def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max
     else:
         if upscale <= 1.0 or new_w == 0 or new_h == 0:
             logging.info("Detailer: force inpaint")
-            upscale = 1.0
-            new_w = w
-            new_h = h
+            upscale = min(1.0, max_size / max(w, h))
+            new_w = int(w * upscale)
+            new_h = int(h * upscale)
+
+    return upscale, new_w, new_h
+
+
+def enhance_detail(image, model, clip, vae, guide_size, guide_size_for_bbox, max_size, bbox, seed, steps, cfg,
+                   sampler_name, scheduler, positive, negative, denoise, noise_mask, force_inpaint,
+                   wildcard_opt=None, wildcard_opt_concat_mode=None, cycle=1, inpaint_model=False,
+                   noise_mask_feather=0, vae_tiled_encode=False, vae_tiled_decode=False):
+    """Enlarge one crop to guide_size, resample it, decode, shrink back. (None) when the SEG is skipped."""
+    import comfy.model_management as mm
+    import nodes
+
+    if noise_mask is not None:
+        noise_mask = S.tensor_gaussian_blur_mask(noise_mask, noise_mask_feather)
+        noise_mask = noise_mask.squeeze(3)
+
+    if wildcard_opt is not None and wildcard_opt != "":
+        wildcard_positive = encode_wildcard_prompt(wildcard_opt, clip)
+
+        if wildcard_opt_concat_mode == "concat":
+            positive = nodes.ConditioningConcat().concat(positive, wildcard_positive)[0]
+        else:
+            positive = wildcard_positive
+
+    h = image.shape[1]
+    w = image.shape[2]
+
+    size = sample_size(w, h, bbox, guide_size, guide_size_for_bbox, max_size, force_inpaint)
+    if size is None:
+        return None
+    upscale, new_w, new_h = size
+    bbox_h = bbox[3] - bbox[1]
+    bbox_w = bbox[2] - bbox[0]
 
     logging.info(f"Detailer: segment upscale for ({bbox_w, bbox_h}) | crop region {w, h} x {upscale} -> {new_w, new_h}")
 
