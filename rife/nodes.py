@@ -85,6 +85,27 @@ def plan_tasks(n_frames, multiplier):
     return tasks
 
 
+def interpolate_chunk(model, frames, multiplier, scale_list, fast_mode, ensemble, torch_dtype, device, batch_size=1):
+    """frames [n, 3, h, w] float32 on cpu -> [(n-1)*multiplier, 3, h, w] float32 on cpu: every frame
+    but the last, each followed by its multiplier-1 middles. The caller keeps the last frame as the
+    first of the next chunk, so a clip streamed in chunks comes out identical to one run whole."""
+    tasks = plan_tasks(len(frames), multiplier)
+    out = torch.empty((max(len(frames) - 1, 0) * multiplier, *frames.shape[1:]), dtype=torch.float32)
+    out[::multiplier] = frames[:-1]
+    with torch.inference_mode():
+        for pos in range(0, len(tasks), batch_size):
+            batch_tasks = tasks[pos: pos + batch_size]
+            idx = [p for p, _ in batch_tasks]
+            frame0 = frames[idx].to(device, dtype=torch_dtype)
+            frame1 = frames[[i + 1 for i in idx]].to(device, dtype=torch_dtype)
+            timesteps = torch.tensor([dt for _, dt in batch_tasks], dtype=torch_dtype, device=device).view(-1, 1, 1, 1)
+            # Same positional call as MpiRifeVFI.vfi (fast_mode -> IFNet `training`, ensemble -> `fastmode`).
+            middle = model(frame0, frame1, timesteps, scale_list, fast_mode, ensemble).clamp(0, 1).cpu()
+            for k, (pair_idx, dt) in enumerate(batch_tasks):
+                out[pair_idx * multiplier + round(dt * multiplier)] = middle[k].to(dtype=torch_dtype)
+    return out
+
+
 class MpiRifeVFI:
 
     @classmethod

@@ -137,6 +137,35 @@ def test_node_matches_original():
             assert torch.equal(node.vfi(frames=frames, **base2)[0], orig_node.RIFE_VFI().vfi(frames=frames, **base2)[0])
 
 
+def test_chunks_match_whole():
+    # MPI-1397: MpiRifeVideo runs interpolate_chunk a second at a time, carrying the last frame
+    # over; the joined chunks must be exactly MpiRifeVFI's output on the whole clip.
+    net = _net(4)
+    with tempfile.TemporaryDirectory() as d:
+        torch.save(net.state_dict(), os.path.join(d, "rife47.pth"))
+        nodes.rife_weight_dirs = lambda: [d]
+        nodes._model_cache.clear()
+        frames = _frames(7, seed=5)
+        # batch_size 1 only (what video_interpolate.json runs): IFNet's output shifts with which
+        # pairs share a batch (up to ~0.015 at x2), and chunking regroups them.
+        bs = 1
+        for m in (3, 2, 1):
+            whole = nodes.MpiRifeVFI().vfi("rife47.pth", frames, multiplier=m, fast_mode=False, ensemble=True,
+                                          batch_size=bs)[0]
+            model = nodes._model_cache[("rife47.pth", "float32", False)]
+            x = frames.permute(0, 3, 1, 2)
+            parts, prev = [], None
+            for start in range(0, len(x), 3):
+                chunk = x[start: start + 3] if prev is None else torch.cat([prev, x[start: start + 3]])
+                parts.append(nodes.interpolate_chunk(model, chunk, m, [8, 4, 2, 1], False, True, torch.float32,
+                                                     torch.device("cpu"), bs))
+                prev = chunk[-1:]
+            parts.append(prev)
+            streamed = torch.cat(parts).permute(0, 2, 3, 1)
+            assert streamed.shape == whole.shape == ((7 - 1) * m + 1, 24, 40, 3), (m, streamed.shape)
+            assert torch.equal(streamed, whole), (m, float((streamed - whole).abs().max()))
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
