@@ -616,11 +616,29 @@ class MpiStepWindowedSampler(MpiWindowedSampler):
         "after every sampling step so they settle on one video. Works from pure "
         "noise (first-pass generation), unlike Mpi Windowed Sampler, which is a "
         "refine. Video and audio are both windowed. Needs a stateless sampler "
-        "(euler). A clip that fits one window samples in a single ordinary pass."
+        "(euler). A clip that fits one window samples in a single ordinary pass. "
+        "Optional window_guider_N gives window N its own guider (its own slice of "
+        "the prompt); an unwired one uses the main guider."
     )
 
+    WINDOW_GUIDERS = 8
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        types = super().INPUT_TYPES()
+        types["optional"] = {
+            f"window_guider_{i}": ("GUIDER", {
+                "tooltip": f"Guider for window {i} only (counted from the start of the "
+                           "clip), so that window hears its own slice of the prompt. "
+                           "Unwired = the main guider. Must wrap the same model. "
+                           "Ignored on the single-pass path.",
+            })
+            for i in range(1, cls.WINDOW_GUIDERS + 1)
+        }
+        return types
+
     def doit(self, noise, guider, sampler, sigmas, latent_image, window_frames,
-             overlap_frames, frame_grid=5):
+             overlap_frames, frame_grid=5, **window_guiders):
         if not isinstance(sampler, comfy.samplers.KSAMPLER):
             raise ValueError("Mpi Step Windowed Sampler needs a KSampler sampler (KSamplerSelect).")
         latent = latent_image.copy()
@@ -660,15 +678,25 @@ class MpiStepWindowedSampler(MpiWindowedSampler):
                 guider, sampler, sigmas, latent, full_noise, noise.seed, disable_pbar)
             return (out, out_denoised, info)
 
+        guiders = [window_guiders.get(f"window_guider_{i + 1}") or guider
+                   for i in range(len(spans))]
+        for i, g in enumerate(guiders):
+            if g.model_patcher.model is not guider.model_patcher.model:
+                raise ValueError(f"Mpi Step Windowed Sampler: window_guider_{i + 1} wraps a "
+                                 "different model than the main guider.")
+        unused = [k for k, v in window_guiders.items() if v is not None
+                  and int(k.rsplit("_", 1)[1]) > len(spans)]
         noise_video, noise_rest = _split_av(full_noise)
-        audio_spans = [_audio_span(s, e, total, grid, ratio, audio_len) for s, e in spans]
+        audio_spans =[_audio_span(s, e, total, grid, ratio, audio_len) for s, e in spans]
         mask = latent.get("noise_mask", None)
         steps = sigmas.shape[-1] - 1
         info = (f"{len(spans)} windows fused every step over {steps} steps "
                 f"({steps * len(spans)} window passes). Clip is "
                 f"{latent_to_frames(total, grid, ratio)} video frames ({total} latent). "
                 f"Ceiling {ceiling} frames ({source}), {overlap_frames} frames of "
-                f"overlap asked. spans={spans} audio={audio_spans}")
+                f"overlap asked. spans={spans} audio={audio_spans}. "
+                f"Own guider on windows {[i + 1 for i, g in enumerate(guiders) if g is not guider] or 'none'}"
+                + (f"; ignored (no such window): {unused}" if unused else ""))
         print(f"[MpiStepWindowedSampler] {info}")
 
         # Every stream as [video, *audio], time on dim 2 for video and last for audio.
@@ -699,7 +727,7 @@ class MpiStepWindowedSampler(MpiWindowedSampler):
                     return comfy.utils.pack_latents(parts)[0] if len(parts) > 1 else parts[0]
                 seg_start = None if state is None else window_of(state)
                 started = _StartedSampler(sampler, seg_start, window_of(step_noise))
-                result = guider.sample(seg_noise, seg_samples, started, sigmas[step:step + 2],
+                result = guiders[index].sample(seg_noise, seg_samples, started, sigmas[step:step + 2],
                                        denoise_mask=seg_mask, callback=None,
                                        disable_pbar=True, seed=noise.seed)
                 model_parts = comfy.utils.unpack_latents(started.result.float().cpu(), shapes)

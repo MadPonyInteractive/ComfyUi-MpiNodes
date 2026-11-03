@@ -71,11 +71,21 @@ class _Noise:
         return torch.randn(s.shape, generator=g)
 
 
-def _run(samples, window, overlap, name="euler"):
+class _BiasedGuider(_Guider):
+    """Same model, other conditioning: shifts every prediction, as another prompt would."""
+    calls = 0
+
+    def sample(self, *a, **k):
+        self.calls += 1
+        return super().sample(*a, **k) + 0.5
+
+
+def _run(samples, window, overlap, name="euler", **window_guiders):
     sigmas = torch.linspace(1.0, 0.0, 9)
     smp = comfy.samplers.sampler_object(name)
     node = sampler.MpiStepWindowedSampler()
-    out, _, info = node.doit(_Noise(), _Guider(), smp, sigmas, {"samples": samples}, window, overlap, 1)
+    out, _, info = node.doit(_Noise(), _Guider(), smp, sigmas, {"samples": samples}, window, overlap, 1,
+                             **window_guiders)
     return out["samples"], info
 
 
@@ -104,8 +114,39 @@ def check(samples, label):
     print(f"ok {label}: {info.split('.')[0]}")
 
 
+def check_window_guiders():
+    """window_guider_N drives window N only; unwired windows keep the main guider."""
+    samples = torch.randn(1, 4, 30, 3, 5)
+    base, info = _run(samples, 12, 4)
+    spans = eval(info.split("spans=")[1].split(" audio=")[0])
+    same, _ = _run(samples, 12, 4, window_guider_2=_Guider(), window_guider_8=None)
+    assert (base - same).abs().max().item() < 1e-6, "an equivalent window guider changed the result"
+    biased = _BiasedGuider()
+    got, info = _run(samples, 12, 4, window_guider_2=biased, window_guider_8=_Guider())
+    assert biased.calls == 8, biased.calls  # one call per step, window 2 only
+    assert "Own guider on windows [2]" in info and "window_guider_8" in info, info
+    # A frame-local model: frames outside window 2 never see its guider.
+    touched = set(range(*spans[1]))
+    diff = (got - base).abs().amax(dim=(0, 1, 3, 4))
+    for t in range(samples.shape[2]):
+        assert (diff[t] > 1e-3) == (t in touched), f"frame {t}: diff {diff[t]}, window 2 is {spans[1]}"
+    other = _Guider()
+    other.model_patcher = types.SimpleNamespace(model=types.SimpleNamespace(), load_device="cpu")
+    try:
+        _run(samples, 12, 4, window_guider_1=other)
+    except ValueError as e:
+        assert "window_guider_1" in str(e), e
+    else:
+        raise AssertionError("a guider on another model must be refused")
+    types_ = sampler.MpiStepWindowedSampler.INPUT_TYPES()
+    assert list(types_["required"]) == list(sampler.MpiWindowedSampler.INPUT_TYPES()["required"])
+    assert "optional" not in sampler.MpiWindowedSampler.INPUT_TYPES()
+    print("ok window guiders: window 2 only, unwired = main, other model refused")
+
+
 if __name__ == "__main__":
     torch.manual_seed(0)
     check(torch.randn(1, 4, 30, 3, 5), "video only")
     check(NestedTensor([torch.randn(1, 4, 30, 3, 5), torch.randn(1, 8, 60)]), "video + audio")
     check_noisy(NestedTensor([torch.randn(1, 4, 30, 3, 5), torch.randn(1, 8, 60)]), "lcm, two window layouts agree")
+    check_window_guiders()
