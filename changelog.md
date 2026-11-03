@@ -214,3 +214,4 @@
 - MpiRifeVideo - added: RIFE from a video file to an mp4, one second of frames in RAM at a time (Load Video + MpiRifeVFI + Save Video held the whole clip as float32 and ran a 1-minute 1080p x2 out of RAM at 72 GB); same frames as MpiRifeVFI (Cubric Studio MPI-1397)
 - MpiStepWindowedSampler - added: generates from noise in overlapping temporal windows fused after every step, so a clip longer than one window of VRAM is still one coherent generation (Cubric Studio MPI-1336)
 - MpiStepWindowedSampler - optional window_guider_1..8: window N samples with its own guider (its own slice of the prompt) when wired, else the main one; a guider on another model is refused (Cubric Studio MPI-1336)
+- MpiStepWindowedSampler - optional commit_steps: for the first N steps the earlier window alone writes each overlap (no cross-fade), then the usual blend; 0 = unchanged (Cubric Studio MPI-1336)

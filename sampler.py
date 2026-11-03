@@ -217,6 +217,21 @@ def _blend_weights(spans, index, device, dtype):
     return w
 
 
+def _commit_weights(spans, index, device, dtype):
+    """1 where this window is the EARLIEST to cover a frame, else 0.
+
+    Every frame then has exactly one owner, so a crossing carries the earlier
+    window's picture instead of an average of two different ones. Ends only grow
+    along the spans, so the previous window's end is the furthest any earlier one
+    reaches.
+    """
+    start, end = spans[index]
+    w = torch.ones(end - start, device=device, dtype=dtype)
+    lead, _ = _edge_overlaps(spans, index)
+    w[:lead] = 0
+    return w
+
+
 def _split_av(samples):
     """(video, rest) for a joint AV latent, (tensor, None) for a plain one.
 
@@ -635,10 +650,17 @@ class MpiStepWindowedSampler(MpiWindowedSampler):
             })
             for i in range(1, cls.WINDOW_GUIDERS + 1)
         }
+        types["optional"]["commit_steps"] = ("INT", {
+            "default": 0, "min": 0, "max": 1000,
+            "tooltip": "For the first N steps each overlap takes the EARLIER window's "
+                       "prediction only (no cross-fade), so the layout is set by one "
+                       "window; the later window joins on the remaining detail steps. "
+                       "0 = cross-fade on every step.",
+        })
         return types
 
     def doit(self, noise, guider, sampler, sigmas, latent_image, window_frames,
-             overlap_frames, frame_grid=5, **window_guiders):
+             overlap_frames, frame_grid=5, commit_steps=0, **window_guiders):
         if not isinstance(sampler, comfy.samplers.KSAMPLER):
             raise ValueError("Mpi Step Windowed Sampler needs a KSampler sampler (KSamplerSelect).")
         latent = latent_image.copy()
@@ -695,7 +717,8 @@ class MpiStepWindowedSampler(MpiWindowedSampler):
                 f"{latent_to_frames(total, grid, ratio)} video frames ({total} latent). "
                 f"Ceiling {ceiling} frames ({source}), {overlap_frames} frames of "
                 f"overlap asked. spans={spans} audio={audio_spans}. "
-                f"Own guider on windows {[i + 1 for i, g in enumerate(guiders) if g is not guider] or 'none'}"
+                f"Own guider on windows {[i + 1 for i, g in enumerate(guiders) if g is not guider] or 'none'}. "
+                f"Earlier window owns each overlap for the first {min(commit_steps, steps)} steps"
                 + (f"; ignored (no such window): {unused}" if unused else ""))
         print(f"[MpiStepWindowedSampler] {info}")
 
@@ -736,7 +759,8 @@ class MpiStepWindowedSampler(MpiWindowedSampler):
 
                 for k, (m, o) in enumerate(zip(model_parts, out_parts)):
                     s0, s1 = span_of[k][index]
-                    w = _blend_weights(span_of[k], index, "cpu", torch.float32)
+                    weights = _commit_weights if step < commit_steps else _blend_weights
+                    w = weights(span_of[k], index, "cpu", torch.float32)
                     idx = [slice(None)] * acc[k].ndim
                     idx[dims[k]] = slice(s0, s1)
                     acc[k][tuple(idx)] += m * _time_view(w, m.ndim, dims[k])

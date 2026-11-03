@@ -144,9 +144,30 @@ def check_window_guiders():
     print("ok window guiders: window 2 only, unwired = main, other model refused")
 
 
+def check_commit_steps():
+    """commit_steps: the earlier window alone writes each overlap for those steps."""
+    samples = torch.randn(1, 4, 30, 3, 5)
+    base, info = _run(samples, 12, 4)
+    spans = eval(info.split("spans=")[1].split(" audio=")[0])
+    same, info = _run(samples, 12, 4, commit_steps=3)
+    assert (base - same).abs().max().item() < 1e-5, "committing with one guider changed a frame-local result"
+    assert "first 3 steps" in info, info
+    # Every step committed: window 2's guider reaches only the frames window 2 owns, never window 1's overlap.
+    got, _ = _run(samples, 12, 4, window_guider_2=_BiasedGuider(), commit_steps=8)
+    owned = set(range(spans[0][1], spans[1][1]))
+    diff = (got - base).abs().amax(dim=(0, 1, 3, 4))
+    for t in range(samples.shape[2]):
+        assert (diff[t] > 1e-3) == (t in owned), f"frame {t}: diff {diff[t]}, window 2 owns {sorted(owned)}"
+    # Committed for some steps only: the overlap with window 1 still feels window 2 on the cross-fade steps.
+    part, _ = _run(samples, 12, 4, window_guider_2=_BiasedGuider(), commit_steps=4)
+    assert (part - base).abs().amax(dim=(0, 1, 3, 4))[spans[1][0]].item() > 1e-3
+    print(f"ok commit steps: window 2 owns {min(owned)}-{max(owned)}, the overlap with window 1 stays window 1's")
+
+
 if __name__ == "__main__":
     torch.manual_seed(0)
     check(torch.randn(1, 4, 30, 3, 5), "video only")
     check(NestedTensor([torch.randn(1, 4, 30, 3, 5), torch.randn(1, 8, 60)]), "video + audio")
     check_noisy(NestedTensor([torch.randn(1, 4, 30, 3, 5), torch.randn(1, 8, 60)]), "lcm, two window layouts agree")
     check_window_guiders()
+    check_commit_steps()
