@@ -212,3 +212,4 @@
 - MpiH3PinFirstFrame - added (pins a clip's first frame: one encoded frame into latent step 0, masked, video only, audio left free; keeps an existing noise mask) (Cubric Studio MPI-1336)
 - MpiMaskDetailerPipe, MpiDetailerForEachPipe - max_size now caps the sampled size both ways: with force_inpaint a crop bigger than max_size shrinks to it (was sampled at native size, 3375 px for a face cut from a 16K photo: slow, VAE decode out of memory, SDXL artifacts) (Cubric Studio MPI-1392)
 - MpiRifeVideo - added: RIFE from a video file to an mp4, one second of frames in RAM at a time (Load Video + MpiRifeVFI + Save Video held the whole clip as float32 and ran a 1-minute 1080p x2 out of RAM at 72 GB); same frames as MpiRifeVFI (Cubric Studio MPI-1397)
+- MpiStepWindowedSampler - added: generates from noise in overlapping temporal windows fused after every step, so a clip longer than one window of VRAM is still one coherent generation (Cubric Studio MPI-1336)
