@@ -15,11 +15,14 @@ framing were all decided upstream -- and a short sigma schedule only adds local
 detail. Every window reads the same source and the same noise, so two windows
 cannot disagree about content the way two independent generations would.
 """
+import inspect
+
 import torch  # type: ignore
 from tqdm.auto import tqdm  # type: ignore
 
 import comfy.model_management  # type: ignore
 import comfy.sample  # type: ignore
+import comfy.samplers  # type: ignore
 import comfy.utils  # type: ignore
 import latent_preview  # type: ignore
 from comfy.nested_tensor import NestedTensor  # type: ignore
@@ -549,12 +552,194 @@ class MpiWindowedSampler:
         return (out, out_denoised)
 
 
+class _StartedSampler(comfy.samplers.KSAMPLER):
+    """The stock sampler, started from a given state instead of fresh noise.
+
+    `start` is the packed, model-space x at `sigmas[0]`; None = the normal
+    noise_scaling start. The model-space result is kept in `result`, because
+    what `guider.sample` returns has already been through process_latent_out.
+    """
+
+    def __init__(self, base, start, step_noise):
+        options = dict(base.extra_options)
+        # A sampler that adds fresh noise each step (lcm, the ancestrals) would draw it per
+        # window, so two windows would add DIFFERENT noise to the frames they share and the
+        # blend would average it toward zero: a washed-out overlap. Hand every window its
+        # slice of one clip-wide draw instead.
+        if "noise_sampler" in inspect.signature(base.sampler_function).parameters:
+            options["noise_sampler"] = lambda sigma, sigma_next: step_noise.to(sigma.device)
+        super().__init__(base.sampler_function, options, base.inpaint_options)
+        self.start = start
+        self.result = None
+
+    def sample(self, model_wrap, sigmas, extra_args, callback, noise, latent_image=None,
+               denoise_mask=None, disable_pbar=False):
+        extra_args["denoise_mask"] = denoise_mask
+        model_k = comfy.samplers.KSamplerX0Inpaint(model_wrap, sigmas)
+        model_k.latent_image = latent_image
+        model_k.noise = noise
+        model_sampling = model_wrap.inner_model.model_sampling
+        x = self.start
+        if x is None:
+            x = model_sampling.noise_scaling(sigmas[0], noise, latent_image,
+                                             self.max_denoise(model_wrap, sigmas))
+        x = self.sampler_function(model_k, x.to(noise.device, noise.dtype), sigmas,
+                                  extra_args=extra_args, callback=None, disable=True,
+                                  **self.extra_options)
+        self.result = x
+        return model_sampling.inverse_noise_scaling(sigmas[-1], x)
+
+
+def _time_view(w, ndim, dim):
+    shape = [1] * ndim
+    shape[dim] = -1
+    return w.view(shape)
+
+
+class MpiStepWindowedSampler(MpiWindowedSampler):
+    """MpiWindowedSampler that fuses the windows after EVERY step, not at the end.
+
+    MpiWindowedSampler runs each window through all its steps alone and
+    cross-fades the finished windows, so two windows started from noise invent two
+    different videos: it can only refine a latent whose content is already fixed.
+    Here every window takes ONE step, the overlaps are blended, and the next step
+    starts from the blended state (MultiDiffusion, along time). The windows agree at
+    every noise level, so a clip can be GENERATED from noise one window of VRAM at a
+    time. Each window still goes through `guider.sample`, so H3 builds its packed
+    layout, references and masks for that window's own shape, exactly as the
+    refine sampler does. Audio in a joint AV latent is generated and blended the
+    same way, sliced in time with its video. Cost: steps x windows model calls.
+    """
+
+    DESCRIPTION = (
+        "Generates a clip in overlapping temporal windows, blending the windows "
+        "after every sampling step so they settle on one video. Works from pure "
+        "noise (first-pass generation), unlike Mpi Windowed Sampler, which is a "
+        "refine. Video and audio are both windowed. Needs a stateless sampler "
+        "(euler). A clip that fits one window samples in a single ordinary pass."
+    )
+
+    def doit(self, noise, guider, sampler, sigmas, latent_image, window_frames,
+             overlap_frames, frame_grid=5):
+        if not isinstance(sampler, comfy.samplers.KSAMPLER):
+            raise ValueError("Mpi Step Windowed Sampler needs a KSampler sampler (KSamplerSelect).")
+        latent = latent_image.copy()
+        samples = comfy.sample.fix_empty_latent_channels(
+            guider.model_patcher,
+            latent_image["samples"],
+            latent_image.get("downscale_ratio_spacial", None),
+            latent_image.get("downscale_ratio_temporal", None),
+        )
+        latent["samples"] = samples
+
+        video, audio = _split_av(samples)
+        total = video.shape[2]
+        audio_len = audio[0].shape[-1] if audio else 0
+        grid = max(1, frame_grid)
+        latent_format = getattr(guider.model_patcher.model, "latent_format", None)
+        ratio = getattr(latent_format, "temporal_downscale_ratio", 1)
+        ceiling, source = window_frames, "set on the widget"
+        if window_frames <= 0:
+            spatial = getattr(latent_format, "spacial_downscale_ratio", 8)
+            area = video.shape[-1] * video.shape[-2] * spatial * spatial
+            usable = usable_vram(guider.model_patcher.load_device)
+            ceiling = auto_window_frames(area, usable, overlap_frames)
+            source = f"auto: {usable / GIB:.1f} GiB usable VRAM at {area} px"
+        window = max(1, frames_to_latent(ceiling, grid, ratio, total))
+        overlap = frames_to_latent(overlap_frames, grid, ratio, max(0, window - 1))
+        spans = plan_windows(total, window, overlap, grid)
+        disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
+
+        full_noise = noise.generate_noise(latent)
+        if len(spans) == 1:
+            info = (f"single pass: {total} latent frames "
+                    f"({latent_to_frames(total, grid, ratio)} video), at or under the "
+                    f"{ceiling}-frame ceiling ({source}), so nothing was windowed")
+            print(f"[MpiStepWindowedSampler] {info}")
+            out, out_denoised = self._sample_once(
+                guider, sampler, sigmas, latent, full_noise, noise.seed, disable_pbar)
+            return (out, out_denoised, info)
+
+        noise_video, noise_rest = _split_av(full_noise)
+        audio_spans = [_audio_span(s, e, total, grid, ratio, audio_len) for s, e in spans]
+        mask = latent.get("noise_mask", None)
+        steps = sigmas.shape[-1] - 1
+        info = (f"{len(spans)} windows fused every step over {steps} steps "
+                f"({steps * len(spans)} window passes). Clip is "
+                f"{latent_to_frames(total, grid, ratio)} video frames ({total} latent). "
+                f"Ceiling {ceiling} frames ({source}), {overlap_frames} frames of "
+                f"overlap asked. spans={spans} audio={audio_spans}")
+        print(f"[MpiStepWindowedSampler] {info}")
+
+        # Every stream as [video, *audio], time on dim 2 for video and last for audio.
+        streams = [video] + (list(audio) if audio else [])
+        dims = [2] + [-1] * (len(streams) - 1)
+        span_of = [list(spans)] + [audio_spans] * (len(streams) - 1)
+
+        pbar = comfy.utils.ProgressBar(steps * len(spans))
+        bar = None if disable_pbar else tqdm(total=steps * len(spans))
+        state = None      # model-space x for the whole clip at the current sigma, per stream
+        returned = None   # the same, as guider.sample hands it back (process_latent_out)
+        for step in range(steps):
+            g = torch.Generator().manual_seed(noise.seed + 1 + step)
+            step_noise = [torch.randn(s.shape, generator=g) for s in streams]
+            acc = [torch.zeros(s.shape, dtype=torch.float32) for s in streams]
+            out_acc = [torch.zeros(s.shape, dtype=torch.float32) for s in streams]
+            acc_w = [torch.zeros(s.shape[d], dtype=torch.float32) for s, d in zip(streams, dims)]
+            for index, (start, end) in enumerate(spans):
+                a0, a1 = audio_spans[index]
+                seg_samples = _rejoin_av(video[:, :, start:end], _slice_rest(audio, a0, a1, audio_len))
+                seg_noise = _rejoin_av(noise_video[:, :, start:end],
+                                       _slice_rest(noise_rest, a0, a1, audio_len))
+                seg_mask = None if mask is None else self._slice_mask(mask, start, end, total)
+                shapes = [t.shape for t in _split_av(seg_samples)[:1]] + \
+                    [t.shape for t in (_split_av(seg_samples)[1] or [])]
+                def window_of(full):
+                    parts = [full[0][:, :, start:end]] + [t[..., a0:a1] for t in full[1:]]
+                    return comfy.utils.pack_latents(parts)[0] if len(parts) > 1 else parts[0]
+                seg_start = None if state is None else window_of(state)
+                started = _StartedSampler(sampler, seg_start, window_of(step_noise))
+                result = guider.sample(seg_noise, seg_samples, started, sigmas[step:step + 2],
+                                       denoise_mask=seg_mask, callback=None,
+                                       disable_pbar=True, seed=noise.seed)
+                model_parts = comfy.utils.unpack_latents(started.result.float().cpu(), shapes)
+                head, rest = _split_av(result)
+                out_parts = [head] + list(rest or [])
+
+                for k, (m, o) in enumerate(zip(model_parts, out_parts)):
+                    s0, s1 = span_of[k][index]
+                    w = _blend_weights(span_of[k], index, "cpu", torch.float32)
+                    idx = [slice(None)] * acc[k].ndim
+                    idx[dims[k]] = slice(s0, s1)
+                    acc[k][tuple(idx)] += m * _time_view(w, m.ndim, dims[k])
+                    out_acc[k][tuple(idx)] += o.float().cpu() * _time_view(w, m.ndim, dims[k])
+                    acc_w[k][s0:s1] += w
+                pbar.update(1)
+                if bar is not None:
+                    bar.update(1)
+            norms = [_time_view(w.clamp(min=1e-8), a.ndim, d) for w, a, d in zip(acc_w, acc, dims)]
+            state = [a / n for a, n in zip(acc, norms)]
+            returned = [a / n for a, n in zip(out_acc, norms)]
+        if bar is not None:
+            bar.close()
+
+        out = latent.copy()
+        out.pop("downscale_ratio_spacial", None)
+        out.pop("downscale_ratio_temporal", None)
+        out.pop("noise_mask", None)
+        returned = [r.to(s.dtype) for r, s in zip(returned, streams)]
+        out["samples"] = _rejoin_av(returned[0], returned[1:] if audio else None)
+        return (out, out, info)
+
+
 NODE_CLASS_MAPPINGS = {
     "MpiWindowedSampler": MpiWindowedSampler,
+    "MpiStepWindowedSampler": MpiStepWindowedSampler,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiWindowedSampler": "Mpi Windowed Sampler",
+    "MpiStepWindowedSampler": "Mpi Step Windowed Sampler",
 }
 
 
