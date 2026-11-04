@@ -290,6 +290,7 @@ Ported with unchanged behaviour so Cubric Studio can drop three single-use packs
 | **MpiAudioSeparation** | Split a track into bass, drums, other and vocals with Hybrid Demucs v3 (from audio-separation-nodes-comfyui, `stems/`; torchaudio fetches the weight on first use). |
 | **MpiRifeVFI** | RIFE 4.7 frame interpolation (from ComfyUI-Frame-Interpolation, `rife/`). Never downloads: `rife47.pth` is read from `models/rife/`, or from the old pack's `ckpts/rife/` folder. |
 | **MpiRifeVideo** | RIFE 4.7 from a video file straight to an .mp4 (fps x multiplier, audio kept), decoding, interpolating and encoding one second at a time so RAM stays flat on any clip length. Same frames as MpiRifeVFI. Takes the file by `string` or picker; outputs the mp4 path. |
+| **MpiUpscaleVideo** | Upscale a video file straight to an .mp4 by `scale_by` (audio kept): through an upscale model then lanczos (`use_model` on), or lanczos alone (the model input is lazy, so it is never loaded). Decodes, upscales and encodes a frame at a time so RAM stays flat on any clip length. Same pixels as Load Video + Upscale Image (using Model) + Upscale Image By. Takes the file by `string` or picker; outputs the mp4 path. |
 
 ### KJ image, mask and LTX helpers
 
