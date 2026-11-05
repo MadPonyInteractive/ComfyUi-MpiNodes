@@ -29,6 +29,8 @@ def _prepare_callback(model, steps, x0_output_dict=None):
 for name in ("comfy", "comfy.model_management", "comfy.sample", "comfy.utils", "comfy.nested_tensor", "latent_preview"):
     sys.modules.setdefault(name, types.ModuleType(name))
 sys.modules["comfy.nested_tensor"].NestedTensor = object
+sys.modules["comfy"].samplers = sys.modules.setdefault("comfy.samplers", types.ModuleType("comfy.samplers"))
+sys.modules["comfy.samplers"].KSAMPLER = object  # sampler.py subclasses it at import
 sys.modules["latent_preview"].prepare_callback = _prepare_callback
 
 import sampler  # noqa: E402

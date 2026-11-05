@@ -28,7 +28,7 @@ import latent_preview  # type: ignore
 from comfy.nested_tensor import NestedTensor  # type: ignore
 
 
-def latent_to_frames(t, grid, ratio):
+def latent_to_frames(t, grid, ratio, causal=False):
     """Video frames a run of `t` latent frames carries.
 
     H3 packs `(1, 4, 4, 4, 4)` video frames per latent frame, indexed by the
@@ -37,21 +37,27 @@ def latent_to_frames(t, grid, ratio):
     the model's `temporal_downscale_ratio`. Verified against the two clip lengths
     this card has measured: T=37 -> 124 frames and T=22 -> 73.
 
-    With `grid=1` there is no packing model, so this is the identity and the
-    node's frame widgets are really counting latent frames. The info output says
-    which of the two happened rather than leaving it to be guessed.
+    `causal` is LTXV's layout: the causal VAE encodes the clip's FIRST frame
+    alone and every later latent frame carries `ratio` (8), so T latent frames
+    are 8(T-1)+1 video frames and a cut may fall anywhere (`grid` 1).
+
+    With `grid=1` and no `causal` there is no packing model, so this is the
+    identity and the node's frame widgets are really counting latent frames. The
+    info output says which of the two happened rather than leaving it to be guessed.
     """
+    if causal:
+        return ratio * t - (ratio - 1) if t > 0 else 0
     return ratio * t - (ratio - 1) * -(-t // grid)
 
 
-def frames_to_latent(frames, grid, ratio, cap):
+def frames_to_latent(frames, grid, ratio, cap, causal=False):
     """Largest latent run of at most `cap` whose video length fits in `frames`.
 
     Searched rather than inverted: the exact inverse has to round the same way
     the ceiling above does, and a clip is a few dozen latent frames.
     """
     t = 0
-    while t < cap and latent_to_frames(t + 1, grid, ratio) <= frames:
+    while t < cap and latent_to_frames(t + 1, grid, ratio, causal) <= frames:
         t += 1
     return t
 
@@ -250,7 +256,26 @@ def _rejoin_av(video, rest):
     return NestedTensor([video] + list(rest))
 
 
-def _audio_span(start, end, total, grid, ratio, ref_len):
+def _appended_guides(guider):
+    """True when the conditioning carries LTXV guide frames (`keyframe_idxs`).
+
+    LTXVAddGuide (first / last frame) and LTXAddVideoICLoRAGuide (a reference
+    video) APPEND their encoded frames to the END of the video latent and record
+    their positions in the conditioning. A time window is then not a slice of the
+    clip: the last window would hold the guides as if they were frames, and every
+    other window would be read with guide positions that are not in it. Placing
+    each guide into the windows it belongs to is not built, so such a latent is
+    sampled in one pass, as it was before this node.
+    """
+    for conds in (getattr(guider, "original_conds", None) or {}).values():
+        for c in conds or []:
+            k = c.get("keyframe_idxs") if isinstance(c, dict) else None
+            if k is not None and k.shape[2] > 0:
+                return True
+    return False
+
+
+def _audio_span(start, end, total, grid, ratio, ref_len, causal=False):
     """Audio token span [a0, a1) matching the video latent window [start, end).
 
     Audio is NOT a global stream the model reads whole -- it is indexed in time
@@ -267,28 +292,44 @@ def _audio_span(start, end, total, grid, ratio, ref_len):
     render of that window would have produced -- one frame short and the packed
     layout no longer describes the tensor it was built for.
     """
-    frames_total = latent_to_frames(total, grid, ratio)
+    frames_total = latent_to_frames(total, grid, ratio, causal)
     if frames_total <= 0 or ref_len <= 0:
         return 0, ref_len
     rate = ref_len / frames_total
-    f0 = latent_to_frames(start, grid, ratio)
-    want = round((latent_to_frames(end, grid, ratio) - f0) * rate)
+    f0 = latent_to_frames(start, grid, ratio, causal)
+    want = round((latent_to_frames(end, grid, ratio, causal) - f0) * rate)
     want = max(1, min(want, ref_len))
     a0 = round(f0 * rate)
     a1 = min(a0 + want, ref_len)
     return a1 - want, a1
 
 
-def _slice_rest(rest, a0, a1, ref_len):
-    """Slice the audio side of an AV latent by its LAST (time) dim.
+def _audio_time_dim(latent_format):
+    """Axis the audio of a joint AV latent runs along in time.
 
-    Only tensors whose last dim matches the reference length are touched; anything
-    else in the nested tuple is passed through, so a model carrying a non-temporal
-    extra stream is unaffected rather than silently mangled.
+    H3 keeps time LAST. LTXV's audio latent is (batch, channels, time, frequency
+    bins) -- `LTXVEmptyLatentAudio` -- so time is dim 2 and the last dim is the
+    16 frequency bins: slicing that one would cut the spectrum, not the clip.
+    """
+    return 2 if _is_ltxv(latent_format) else -1
+
+
+def _is_ltxv(latent_format):
+    import comfy.latent_formats  # type: ignore
+    return isinstance(latent_format, comfy.latent_formats.LTXV)
+
+
+def _slice_rest(rest, a0, a1, ref_len, dim=-1):
+    """Slice the audio side of an AV latent along its time axis `dim`.
+
+    Only tensors whose time axis matches the reference length are touched;
+    anything else in the nested tuple is passed through, so a model carrying a
+    non-temporal extra stream is unaffected rather than silently mangled.
     """
     if rest is None:
         return None
-    return tuple(t[..., a0:a1] if t.ndim >= 1 and t.shape[-1] == ref_len else t
+    return tuple(t.narrow(dim, a0, a1 - a0)
+                 if t.ndim > max(dim, -dim - 1) and t.shape[dim] == ref_len else t
                  for t in rest)
 
 
@@ -331,8 +372,10 @@ class MpiWindowedSampler:
                                "frames. Leave it at 5 for MiniMax H3, which packs time "
                                "as a 2-frame causal head plus blocks of 5; a window "
                                "off that grid ends in a padded part-block that decodes "
-                               "BLACK. Set 1 for a model with no such structure, which "
-                               "gives plain fixed-size windows and makes the two "
+                               "BLACK. Set 1 for LTXV (cuts anywhere; the node reads "
+                               "its 8-frames-per-latent layout from the model, so the "
+                               "widgets above stay in video frames). For any other "
+                               "model, 1 gives plain fixed-size windows and the two "
                                "widgets above count latent frames instead.",
                 }),
             },
@@ -366,9 +409,6 @@ class MpiWindowedSampler:
 
         video, audio = _split_av(samples)
         total = video.shape[2]
-        # Reference length for the audio slice: every stream measured against the
-        # first one, so a mismatched extra tensor is passed through untouched.
-        audio_len = audio[0].shape[-1] if audio else 0
 
         grid = max(1, frame_grid)
         # The model itself says how many video frames a latent frame carries, so
@@ -376,6 +416,15 @@ class MpiWindowedSampler:
         # asking the user for a second number.
         latent_format = getattr(guider.model_patcher.model, "latent_format", None)
         ratio = getattr(latent_format, "temporal_downscale_ratio", 1)
+        causal = _is_ltxv(latent_format)
+        audio_dim = _audio_time_dim(latent_format)
+        # Reference length for the audio slice: every stream measured against the
+        # first one, so a mismatched extra tensor is passed through untouched.
+        audio_len = audio[0].shape[audio_dim] if audio else 0
+
+        def frames(t):
+            return latent_to_frames(t, grid, ratio, causal)
+
         ceiling, source = window_frames, "set on the widget"
         if window_frames <= 0:
             spatial = getattr(latent_format, "spacial_downscale_ratio", 8)
@@ -383,10 +432,11 @@ class MpiWindowedSampler:
             usable = usable_vram(guider.model_patcher.load_device)
             ceiling = auto_window_frames(area, usable, overlap_frames)
             source = f"auto: {usable / GIB:.1f} GiB usable VRAM at {area} px"
-        window = max(1, frames_to_latent(ceiling, grid, ratio, total))
-        overlap = frames_to_latent(overlap_frames, grid, ratio, max(0, window - 1))
+        window = max(1, frames_to_latent(ceiling, grid, ratio, total, causal))
+        overlap = frames_to_latent(overlap_frames, grid, ratio, max(0, window - 1), causal)
 
-        spans = plan_windows(total, window, overlap, grid)
+        guides = _appended_guides(guider)
+        spans = [(0, total)] if guides else plan_windows(total, window, overlap, grid)
         disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
 
         # One noise field for the whole clip, sliced per window. Generating noise
@@ -397,9 +447,12 @@ class MpiWindowedSampler:
         noise_video, noise_rest = _split_av(full_noise)
 
         if len(spans) == 1:
-            info = (f"single pass: {total} latent frames "
-                    f"({latent_to_frames(total, grid, ratio)} video), at or under the "
-                    f"{ceiling}-frame ceiling ({source}), so nothing was windowed")
+            info = (f"single pass: {total} latent frames ({frames(total)} video), "
+                    + ("LTXV guide frames (first / last frame or a reference video) are "
+                       "appended to this latent, and windows would cut them off"
+                       if guides else
+                       f"at or under the {ceiling}-frame ceiling ({source})")
+                    + ", so nothing was windowed")
             print(f"[MpiWindowedSampler] {info}")
             out, out_denoised = self._sample_once(
                 guider, sampler, sigmas, latent, full_noise, noise.seed, disable_pbar)
@@ -410,10 +463,10 @@ class MpiWindowedSampler:
         planned = spans[0][1] - spans[0][0]
         shared = spans[0][1] - spans[1][0]
         info = (
-            f"{len(spans)} windows of {latent_to_frames(planned, grid, ratio)} video "
+            f"{len(spans)} windows of {frames(planned)} video "
             f"frames ({planned} latent), sharing "
-            f"{latent_to_frames(shared, grid, ratio)} video frames ({shared} latent). "
-            f"Clip is {latent_to_frames(total, grid, ratio)} video frames ({total} "
+            f"{frames(shared)} video frames ({shared} latent). "
+            f"Clip is {frames(total)} video frames ({total} "
             f"latent). Ceiling {ceiling} frames ({source}), "
             f"{overlap_frames} frames of overlap asked; grid {grid}, "
             f"{ratio} video frames per latent frame. spans={spans}")
@@ -447,16 +500,17 @@ class MpiWindowedSampler:
             # original restored -- but handing the model the entire track against a
             # sliced video misaligns every frame after the first window by that
             # window's offset, and lip-sync is exactly that alignment.
-            a0, a1 = _audio_span(start, end, total, grid, ratio, audio_len)
+            a0, a1 = _audio_span(start, end, total, grid, ratio, audio_len, causal)
             seg_latent["samples"] = _rejoin_av(
-                seg_video, _slice_rest(audio, a0, a1, audio_len))
+                seg_video, _slice_rest(audio, a0, a1, audio_len, audio_dim))
 
             mask = latent.get("noise_mask", None)
             if mask is not None:
-                seg_latent["noise_mask"] = self._slice_mask(mask, start, end, total)
+                seg_latent["noise_mask"] = self._slice_mask(
+                    mask, start, end, total, (a0, a1, audio_len, audio_dim))
 
             seg_noise = _rejoin_av(noise_video[:, :, start:end],
-                                   _slice_rest(noise_rest, a0, a1, audio_len))
+                                   _slice_rest(noise_rest, a0, a1, audio_len, audio_dim))
 
             x0_output.clear()
             print(f"[MpiWindowedSampler] window {index + 1}/{len(spans)} "
@@ -527,14 +581,23 @@ class MpiWindowedSampler:
         return head
 
     @staticmethod
-    def _slice_mask(mask, start, end, total):
-        """Slice a noise mask alongside its latent, when it is shaped to match."""
+    def _slice_mask(mask, start, end, total, audio_span=None):
+        """Slice a noise mask alongside its latent, when it is shaped to match.
+
+        A joint AV mask is nested like its latent (LTXVConcatAVLatent builds one
+        whenever either half is masked, e.g. LTXVImgToVideoInplace's pinned first
+        frame), so its audio half is cut to the same span as the audio, or the
+        model gets a mask longer than the window it masks.
+        """
         if getattr(mask, "is_nested", False):
             parts = mask.unbind()
             head = parts[0]
+            rest = list(parts[1:])
+            if audio_span is not None:
+                rest = list(_slice_rest(rest, *audio_span))
             if head.ndim >= 3 and head.shape[2] == total:
-                return NestedTensor([head[:, :, start:end]] + list(parts[1:]))
-            return mask
+                head = head[:, :, start:end]
+            return NestedTensor([head] + rest)
         if mask.ndim >= 3 and mask.shape[2] == total:
             return mask[:, :, start:end]
         return mask

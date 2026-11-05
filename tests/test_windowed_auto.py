@@ -19,6 +19,8 @@ for name in ("comfy", "comfy.model_management", "comfy.sample", "comfy.utils", "
              "latent_preview", "folder_paths"):
     sys.modules.setdefault(name, types.ModuleType(name))
 sys.modules["comfy.nested_tensor"].NestedTensor = object
+sys.modules["comfy"].samplers = sys.modules.setdefault("comfy.samplers", types.ModuleType("comfy.samplers"))
+sys.modules["comfy.samplers"].KSAMPLER = object  # sampler.py subclasses it at import
 sys.modules["latent_preview"].prepare_callback = None
 mm = sys.modules["comfy.model_management"]
 sys.modules["comfy"].model_management = mm
