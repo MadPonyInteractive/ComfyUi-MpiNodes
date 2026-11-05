@@ -99,10 +99,41 @@ def test_usable_vram_counts_evictable_models_on_the_same_device():
     assert sampler.usable_vram("cuda:0") == 14 * GIB
 
 
+# LTX 2.5 stage-2 refines (Cubric Studio MPI-1450), 16 GB card, 13.7 GiB usable:
+# 804 M px-frames ran at full speed, 1005 M ran out of memory.
+LTX_2K = 1920 * 1088
+LTX_SD = 1216 * 704
+
+
+def test_ltxv_never_above_what_ran_and_stops_at_its_fastest_size():
+    for area in (LTX_2K, LTX_SD):
+        got = sampler.auto_window_frames(area, 13.7 * GIB, ltxv=True)
+        assert got * area <= 804e6, (area, got)
+        assert type(got) is int, type(got)
+    # 200 M px-frames: 95 frames at 2K, 233 at 1216x704, on any card that holds it.
+    for usable in (10.5, 13.7, 22, 80):
+        assert 90 <= sampler.auto_window_frames(LTX_2K, usable * GIB, ltxv=True) <= 96
+        assert 225 <= sampler.auto_window_frames(LTX_SD, usable * GIB, ltxv=True) <= 234
+    # H3's numbers are untouched by the LTX branch.
+    assert 100 <= sampler.auto_window_frames(P2K, 14.6 * GIB) <= 110
+
+
+def test_ltxv_memory_binds_only_on_small_cards():
+    # ~6 GiB usable is where 200 M stops fitting at 2K.
+    assert sampler.auto_window_frames(LTX_2K, 5 * GIB, ltxv=True) < 90
+    prev = 0
+    for tenth in range(0, 961):
+        got = sampler.auto_window_frames(LTX_2K, tenth / 10 * GIB, ltxv=True)
+        assert got >= prev, (tenth, got, prev)
+        prev = got
+
+
 if __name__ == "__main__":
     test_never_above_what_ran_at_full_speed()
     test_stops_at_the_fastest_size()
     test_overlap_floor_only_where_the_card_holds_it()
     test_monotonic_and_floor()
+    test_ltxv_never_above_what_ran_and_stops_at_its_fastest_size()
+    test_ltxv_memory_binds_only_on_small_cards()
     test_usable_vram_counts_evictable_models_on_the_same_device()
     print("ok")

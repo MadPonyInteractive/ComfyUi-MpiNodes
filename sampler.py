@@ -86,13 +86,29 @@ PX_FRAMES_PER_GIB = 0.9 * 39e6
 # many times the overlap.
 MIN_OVERLAPS = 3
 
+# LTX 2.5 stage-2 refines (Cubric Studio MPI-1450), same pixel-frames shape,
+# 16 GB card at 13.7 GiB usable: 1920x1088 and 1216x704 land on one curve
+# (206 M 22 s a step ... 804 M 211 s), the cost per M px-frames rising from 0.11 s
+# to 0.26 s. Fitting that curve over plan_windows, 150-250 M windows finish a
+# clip fastest; 200 M is the fastest of them on a 10 s 2K clip (4 windows,
+# ~30 % under one pass) and ties elsewhere with fewer seams than 150 M.
+LTXV_FASTEST_PX_FRAMES = 200e6
+# Memory: 804 M ran at full speed, 1005 M ran out of memory. The weights stream
+# (dynamic VRAM), so a GiB holds about twice H3's px-frames: 804 M over the same
+# 3 GiB reserve is 75 M per GiB; 0.9 of it. One card measured: at 200 M this only
+# binds under ~6 GiB usable.
+LTXV_PX_FRAMES_PER_GIB = 0.9 * 75e6
 
-def auto_window_frames(area, usable, overlap_frames=17):
+
+def auto_window_frames(area, usable, overlap_frames=17, ltxv=False):
     """Window ceiling in VIDEO frames for `area` output pixels (width * height of
     the latent being sampled) on an engine with `usable` bytes of VRAM: the
-    fastest size, or the most the card holds at full speed if that is less."""
-    holds = max(0.0, usable / GIB - FIXED_GIB) * PX_FRAMES_PER_GIB / max(1, area)
-    fastest = max(FASTEST_PX_FRAMES / max(1, area), MIN_OVERLAPS * overlap_frames)
+    fastest size, or the most the card holds at full speed if that is less.
+    `ltxv` picks LTX's measured constants instead of H3's."""
+    per_gib = LTXV_PX_FRAMES_PER_GIB if ltxv else PX_FRAMES_PER_GIB
+    best = LTXV_FASTEST_PX_FRAMES if ltxv else FASTEST_PX_FRAMES
+    holds = max(0.0, usable / GIB - FIXED_GIB) * per_gib / max(1, area)
+    fastest = max(best / max(1, area), MIN_OVERLAPS * overlap_frames)
     return max(1, int(min(holds, fastest)))
 
 
@@ -430,7 +446,7 @@ class MpiWindowedSampler:
             spatial = getattr(latent_format, "spacial_downscale_ratio", 8)
             area = video.shape[-1] * video.shape[-2] * spatial * spatial
             usable = usable_vram(guider.model_patcher.load_device)
-            ceiling = auto_window_frames(area, usable, overlap_frames)
+            ceiling = auto_window_frames(area, usable, overlap_frames, ltxv=causal)
             source = f"auto: {usable / GIB:.1f} GiB usable VRAM at {area} px"
         window = max(1, frames_to_latent(ceiling, grid, ratio, total, causal))
         overlap = frames_to_latent(overlap_frames, grid, ratio, max(0, window - 1), causal)
