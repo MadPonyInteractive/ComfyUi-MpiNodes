@@ -479,6 +479,10 @@ for _classes, _names in (
 
 WEB_DIRECTORY = "./web"
 
+# Per-prompt peak RAM/VRAM for Cubric Studio's per-machine clip length (MPI-1448).
+from .memory_probe import start as _start_memory_probe
+_start_memory_probe()
+
 __all__ = [
     "NODE_CLASS_MAPPINGS",
     "NODE_DISPLAY_NAME_MAPPINGS",

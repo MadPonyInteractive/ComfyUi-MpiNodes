@@ -305,6 +305,14 @@ Ported from ComfyUI-KJNodes (GPL-3.0) and color-matcher with unchanged inputs, s
 | **MpiLTX2NAG** / **MpiLTXAudioVideoMask** / **MpiVAELoader** | LTX 2 normalized attention guidance, audio/video latent masks, and a VAE loader with device and dtype (were LTX2_NAG, LTXVAudioVideoMask, VAELoaderKJ). |
 | **MpiLoraExtract** | Extract a LoRA from the difference of two models by SVD (was LoraExtractKJ). |
 
+### Memory probe (no node)
+
+`memory_probe.py` starts with the pack. While any prompt runs it samples the engine's RAM, the
+system's RAM and the GPU's memory every 0.25 s, and when the prompt ends it sends one
+`mpi.memory_peak` websocket message to the client that queued it: the start and peak of each, the
+prompt's outcome, and the machine's totals. Cubric Studio uses it to work out the longest clip each
+model can make on that machine.
+
 ---
 
 ## License
