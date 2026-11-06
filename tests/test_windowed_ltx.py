@@ -156,8 +156,30 @@ def check_guides_stay_one_pass():
     print("ok appended guides: one pass, said so")
 
 
+def check_step_windows_equal_one_pass():
+    """MpiStepWindowedSampler reads the same LTXV facts: causal count, audio on dim 2, nested mask."""
+    latent = _latent(16)
+    sigmas = torch.tensor([0.85, 0.725, 0.4219, 0.0])
+    euler = comfy.samplers.sampler_object("euler")
+    one, _, info1 = sampler.MpiStepWindowedSampler().doit(
+        _Noise(), _Guider(), euler, sigmas, latent, 10_000, 17, 1)
+    guider = _Guider()
+    many, _, info = sampler.MpiStepWindowedSampler().doit(
+        _Noise(), guider, euler, sigmas, latent, 49, 17, 1)
+    assert info1.startswith("single pass") and "121 video" in info1, info1
+    assert int(info.split()[0]) > 1 and "121 video frames (16 latent)" in info, info
+    one, many = one["samples"].unbind(), many["samples"].unbind()
+    for k in range(2):
+        diff = (one[k] - many[k]).abs().max().item()
+        assert diff < 1e-4, f"stream {k}: step-windowed differs from one pass by {diff}"
+    for shapes, masks in guider.seen:
+        assert shapes[1][3] == FREQ and masks[1] == shapes[1], (shapes, masks)
+    print(f"ok step windows == one pass: {info.split('.')[0]}")
+
+
 if __name__ == "__main__":
     torch.manual_seed(0)
     check_frame_count()
     check_windows_equal_one_pass()
     check_guides_stay_one_pass()
+    check_step_windows_equal_one_pass()

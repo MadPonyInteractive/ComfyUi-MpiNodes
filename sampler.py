@@ -753,26 +753,31 @@ class MpiStepWindowedSampler(MpiWindowedSampler):
 
         video, audio = _split_av(samples)
         total = video.shape[2]
-        audio_len = audio[0].shape[-1] if audio else 0
         grid = max(1, frame_grid)
         latent_format = getattr(guider.model_patcher.model, "latent_format", None)
         ratio = getattr(latent_format, "temporal_downscale_ratio", 1)
+        # The LTXV facts MpiWindowedSampler.doit reads: causal frame count, audio
+        # time on dim 2, guide frames appended after the clip.
+        causal = _is_ltxv(latent_format)
+        audio_dim = _audio_time_dim(latent_format)
+        audio_len = audio[0].shape[audio_dim] if audio else 0
         ceiling, source = window_frames, "set on the widget"
         if window_frames <= 0:
             spatial = getattr(latent_format, "spacial_downscale_ratio", 8)
             area = video.shape[-1] * video.shape[-2] * spatial * spatial
             usable = usable_vram(guider.model_patcher.load_device)
-            ceiling = auto_window_frames(area, usable, overlap_frames)
+            ceiling = auto_window_frames(area, usable, overlap_frames, ltxv=causal)
             source = f"auto: {usable / GIB:.1f} GiB usable VRAM at {area} px"
-        window = max(1, frames_to_latent(ceiling, grid, ratio, total))
-        overlap = frames_to_latent(overlap_frames, grid, ratio, max(0, window - 1))
-        spans = plan_windows(total, window, overlap, grid)
+        window = max(1, frames_to_latent(ceiling, grid, ratio, total, causal))
+        overlap = frames_to_latent(overlap_frames, grid, ratio, max(0, window - 1), causal)
+        spans = ([(0, total)] if _appended_guides(guider)
+                 else plan_windows(total, window, overlap, grid))
         disable_pbar = not comfy.utils.PROGRESS_BAR_ENABLED
 
         full_noise = noise.generate_noise(latent)
         if len(spans) == 1:
             info = (f"single pass: {total} latent frames "
-                    f"({latent_to_frames(total, grid, ratio)} video), at or under the "
+                    f"({latent_to_frames(total, grid, ratio, causal)} video), at or under the "
                     f"{ceiling}-frame ceiling ({source}), so nothing was windowed")
             print(f"[MpiStepWindowedSampler] {info}")
             out, out_denoised = self._sample_once(
@@ -788,12 +793,13 @@ class MpiStepWindowedSampler(MpiWindowedSampler):
         unused = [k for k, v in window_guiders.items() if v is not None
                   and int(k.rsplit("_", 1)[1]) > len(spans)]
         noise_video, noise_rest = _split_av(full_noise)
-        audio_spans =[_audio_span(s, e, total, grid, ratio, audio_len) for s, e in spans]
+        audio_spans = [_audio_span(s, e, total, grid, ratio, audio_len, causal)
+                       for s, e in spans]
         mask = latent.get("noise_mask", None)
         steps = sigmas.shape[-1] - 1
         info = (f"{len(spans)} windows fused every step over {steps} steps "
                 f"({steps * len(spans)} window passes). Clip is "
-                f"{latent_to_frames(total, grid, ratio)} video frames ({total} latent). "
+                f"{latent_to_frames(total, grid, ratio, causal)} video frames ({total} latent). "
                 f"Ceiling {ceiling} frames ({source}), {overlap_frames} frames of "
                 f"overlap asked. spans={spans} audio={audio_spans}. "
                 f"Own guider on windows {[i + 1 for i, g in enumerate(guiders) if g is not guider] or 'none'}. "
@@ -801,9 +807,9 @@ class MpiStepWindowedSampler(MpiWindowedSampler):
                 + (f"; ignored (no such window): {unused}" if unused else ""))
         print(f"[MpiStepWindowedSampler] {info}")
 
-        # Every stream as [video, *audio], time on dim 2 for video and last for audio.
+        # Every stream as [video, *audio], time on dim 2 for video and audio_dim for audio.
         streams = [video] + (list(audio) if audio else [])
-        dims = [2] + [-1] * (len(streams) - 1)
+        dims = [2] + [audio_dim] * (len(streams) - 1)
         span_of = [list(spans)] + [audio_spans] * (len(streams) - 1)
 
         pbar = comfy.utils.ProgressBar(steps * len(spans))
@@ -818,14 +824,17 @@ class MpiStepWindowedSampler(MpiWindowedSampler):
             acc_w = [torch.zeros(s.shape[d], dtype=torch.float32) for s, d in zip(streams, dims)]
             for index, (start, end) in enumerate(spans):
                 a0, a1 = audio_spans[index]
-                seg_samples = _rejoin_av(video[:, :, start:end], _slice_rest(audio, a0, a1, audio_len))
+                seg_samples = _rejoin_av(video[:, :, start:end],
+                                         _slice_rest(audio, a0, a1, audio_len, audio_dim))
                 seg_noise = _rejoin_av(noise_video[:, :, start:end],
-                                       _slice_rest(noise_rest, a0, a1, audio_len))
-                seg_mask = None if mask is None else self._slice_mask(mask, start, end, total)
+                                       _slice_rest(noise_rest, a0, a1, audio_len, audio_dim))
+                seg_mask = None if mask is None else self._slice_mask(
+                    mask, start, end, total, (a0, a1, audio_len, audio_dim))
                 shapes = [t.shape for t in _split_av(seg_samples)[:1]] + \
                     [t.shape for t in (_split_av(seg_samples)[1] or [])]
                 def window_of(full):
-                    parts = [full[0][:, :, start:end]] + [t[..., a0:a1] for t in full[1:]]
+                    parts = [full[0][:, :, start:end]] + [t.narrow(audio_dim, a0, a1 - a0)
+                                                         for t in full[1:]]
                     return comfy.utils.pack_latents(parts)[0] if len(parts) > 1 else parts[0]
                 seg_start = None if state is None else window_of(state)
                 started = _StartedSampler(sampler, seg_start, window_of(step_noise))
