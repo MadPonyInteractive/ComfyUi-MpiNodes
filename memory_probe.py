@@ -5,6 +5,11 @@ the system's RAM and the GPU's memory every SAMPLE_S; when the prompt leaves the
 one `mpi.memory_peak` websocket message to the client that queued it. The app turns those peaks
 into the longest clip each model can make on this machine.
 
+Beside the job's peak it reports each node's own peak process RAM (`stages`, Cubric Studio
+MPI-1464): a sample is charged to the node executing when it was taken. One job peak cannot tell
+loading the weights from making the frames: on MiniMax H3 the load peak sat above every clip up
+to 1664x960 x 4 s, so the frames' growth never showed. Per node, each stage is its own line.
+
 No node: it runs for every prompt, so a benchmark and an ordinary job are measured the same way.
 The Pod wrapper relays every text frame, so the same message reaches the app from a Pod.
 """
@@ -53,16 +58,20 @@ def _sys_ram_used():
 class Probe:
     """One running prompt's peaks. Pure bookkeeping, so tests drive it without an engine."""
 
-    def __init__(self, prompt_id, client_id, vram_used, sys_ram, proc_ram):
+    def __init__(self, prompt_id, client_id, vram_used, sys_ram, proc_ram, classes=None):
         self.prompt_id = prompt_id
         self.client_id = client_id
+        self.classes = classes or {}   # node id -> class_type, from the queued prompt
+        self.stages = {}               # node id -> peak proc_ram while it ran, in run order
         self.t0 = time.monotonic()
         self.start = {"vram": vram_used, "sys_ram": sys_ram, "proc_ram": proc_ram}
         self.peak = dict(self.start)
         self.samples = 0
 
-    def sample(self, vram_used, sys_ram, proc_ram):
+    def sample(self, vram_used, sys_ram, proc_ram, node=None):
         self.samples += 1
+        if node is not None and proc_ram is not None and proc_ram > self.stages.get(node, -1):
+            self.stages[node] = proc_ram
         for key, val in (("vram", vram_used), ("sys_ram", sys_ram), ("proc_ram", proc_ram)):
             if val is not None and (self.peak[key] is None or val > self.peak[key]):
                 self.peak[key] = val
@@ -81,19 +90,22 @@ class Probe:
             "samples": self.samples,
             "start": self.start,
             "peak": self.peak,
+            "stages": [{"node": n, "class_type": self.classes.get(n), "proc_ram": v} for n, v in self.stages.items()],
             "totals": totals,
             "gpu": gpu_name,
         }
 
 
 def _running(queue):
-    """(prompt_id, client_id) of the prompt executing now, or None."""
+    """(prompt_id, client_id, {node id: class_type}) of the prompt executing now, or None."""
     with queue.mutex:
         items = list(queue.currently_running.values())
     if not items:
         return None
     item = items[0]
-    return item[1], (item[3] or {}).get("client_id")
+    prompt = item[2] if isinstance(item[2], dict) else {}
+    classes = {str(k): v.get("class_type") for k, v in prompt.items() if isinstance(v, dict)}
+    return item[1], (item[3] or {}).get("client_id"), classes
 
 
 def _loop(server):
@@ -114,9 +126,11 @@ def _loop(server):
             server.send_sync(EVENT, cur.report(entry, totals, gpu_name), cur.client_id)
             cur = None
         if cur is None and now is not None:
-            cur = Probe(now[0], now[1], *read())
+            cur = Probe(now[0], now[1], *read(), classes=now[2])
         if cur is not None:
-            cur.sample(*read())
+            # ComfyUI sets this as each node starts executing (execution.py), None between prompts.
+            node = getattr(server, "last_node_id", None)
+            cur.sample(*read(), node=None if node is None else str(node))
         time.sleep(SAMPLE_S if cur is not None else IDLE_S)
 
 

@@ -32,25 +32,33 @@ class FakeQueue:
     @property
     def currently_running(self):
         now = self.timeline[min(self.tick, len(self.timeline) - 1)]
-        return {} if now is None else {0: (1, now[0], {}, {"client_id": now[1]}, [])}
+        prompt = {"3": {"class_type": "UNETLoader"}, "9": {"class_type": "VAEDecode"}}
+        return {} if now is None else {0: (1, now[0], prompt, {"client_id": now[1]}, [])}
 
     def get_history(self, prompt_id=None):
         return {prompt_id: self.history[prompt_id]} if prompt_id in self.history else {}
 
 
 class FakeServer:
-    def __init__(self, queue):
+    def __init__(self, queue, nodes=None):
         self.prompt_queue = queue
         self.sent = []
+        self.nodes = nodes   # one entry per loop pass: the node executing, or None
+
+    @property
+    def last_node_id(self):
+        if not self.nodes:
+            return None
+        return self.nodes[min(self.prompt_queue.tick, len(self.nodes) - 1)]
 
     def send_sync(self, event, data, sid=None):
         self.sent.append((event, data, sid))
 
 
-def run(timeline, readings, history):
+def run(timeline, readings, history, nodes=None):
     """Drive _loop one pass per timeline entry; readings[i] = (vram, sys_ram, proc_ram) for read i."""
     queue = FakeQueue(timeline, history)
-    server = FakeServer(queue)
+    server = FakeServer(queue, nodes)
     reads = iter(readings)
     last = {}
 
@@ -104,6 +112,29 @@ def test_back_to_back_prompts_and_a_failure():
     assert sent[0][1]["status"] == "error" and sent[0][1]["exception_type"] == "torch.OutOfMemoryError"
     assert sent[0][1]["peak"]["vram"] == 2
     assert sent[1][1]["peak"]["vram"] == 8
+
+
+def test_each_node_reports_its_own_peak():
+    # The loader's spike is the job's peak; the decode's own, lower peak is still reported.
+    ok = {"status": {"status_str": "success", "messages": []}}
+    sent = run(
+        timeline=[("p1", "c1")] * 4 + [None, None],
+        readings=[(1, 10, 100), (1, 10, 300), (1, 10, 250), (1, 10, 180), (1, 10, 210)],
+        history={"p1": ok},
+        nodes=["3", "3", "9", "9", None],
+    )
+    data = sent[0][1]
+    assert data["peak"]["proc_ram"] == 300
+    assert data["stages"] == [
+        {"node": "3", "class_type": "UNETLoader", "proc_ram": 300},
+        {"node": "9", "class_type": "VAEDecode", "proc_ram": 210},
+    ], data["stages"]
+
+
+def test_no_executing_node_means_no_stages():
+    ok = {"status": {"status_str": "success", "messages": []}}
+    sent = run(timeline=[("p1", "c1"), None], readings=[(1, 1, 1), (2, 2, 2)], history={"p1": ok})
+    assert sent[0][1]["stages"] == []
 
 
 def test_cpu_engine_has_no_vram():
