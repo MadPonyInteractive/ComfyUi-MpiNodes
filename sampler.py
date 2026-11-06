@@ -15,6 +15,7 @@ framing were all decided upstream -- and a short sigma schedule only adds local
 detail. Every window reads the same source and the same noise, so two windows
 cannot disagree about content the way two independent generations would.
 """
+import contextlib
 import inspect
 
 import torch  # type: ignore
@@ -335,6 +336,31 @@ def _is_ltxv(latent_format):
     return isinstance(latent_format, comfy.latent_formats.LTXV)
 
 
+@contextlib.contextmanager
+def _window_positions(guider, start):
+    """Give a window that starts past latent 0 the clip's real frame times.
+
+    LTX 2.3/2.5 ship `causal_temporal_positioning` on: latent j is read at frames
+    [8j-7, 8j+1], because latent 0 holds ONE frame. A window cut at latent s>0
+    re-numbers from 0, so the model read its latent j at 8j-7 where it really is
+    8j frames after the window's first frame: the picture sat 7 frames (0.29 s)
+    ahead of the audio slice it cross-attends to. Mouths came out of sync, and
+    the windows disagreed in every overlap (Cubric Studio MPI-1450, talking-people
+    test: ghosting + failed lip-sync). A window whose first latent is not the
+    clip's first frame holds 8 frames in EVERY latent, which is exactly the
+    non-causal layout, so it is sampled with the flag off. Window 0 keeps it.
+    """
+    dm = getattr(getattr(guider.model_patcher, "model", None), "diffusion_model", None)
+    flip = start > 0 and getattr(dm, "causal_temporal_positioning", False)
+    if flip:
+        dm.causal_temporal_positioning = False
+    try:
+        yield
+    finally:
+        if flip:
+            dm.causal_temporal_positioning = True
+
+
 def _slice_rest(rest, a0, a1, ref_len, dim=-1):
     """Slice the audio side of an AV latent along its time axis `dim`.
 
@@ -536,10 +562,11 @@ class MpiWindowedSampler:
             # would re-stream the whole DiT over PCIe once per window, which costs
             # far more than the sampling it protects. The sampler's own tqdm is off:
             # `pbar` above is the one bar.
-            result = guider.sample(
-                seg_noise, seg_latent["samples"], sampler, sigmas,
-                denoise_mask=seg_latent.get("noise_mask", None),
-                callback=callback(index), disable_pbar=True, seed=noise.seed)
+            with _window_positions(guider, start):
+                result = guider.sample(
+                    seg_noise, seg_latent["samples"], sampler, sigmas,
+                    denoise_mask=seg_latent.get("noise_mask", None),
+                    callback=callback(index), disable_pbar=True, seed=noise.seed)
             result = result.to(comfy.model_management.intermediate_device())
 
             seg_out, _ = _split_av(result)
@@ -838,9 +865,10 @@ class MpiStepWindowedSampler(MpiWindowedSampler):
                     return comfy.utils.pack_latents(parts)[0] if len(parts) > 1 else parts[0]
                 seg_start = None if state is None else window_of(state)
                 started = _StartedSampler(sampler, seg_start, window_of(step_noise))
-                result = guiders[index].sample(seg_noise, seg_samples, started, sigmas[step:step + 2],
-                                       denoise_mask=seg_mask, callback=None,
-                                       disable_pbar=True, seed=noise.seed)
+                with _window_positions(guiders[index], start):
+                    result = guiders[index].sample(seg_noise, seg_samples, started, sigmas[step:step + 2],
+                                                   denoise_mask=seg_mask, callback=None,
+                                                   disable_pbar=True, seed=noise.seed)
                 model_parts = comfy.utils.unpack_latents(started.result.float().cpu(), shapes)
                 head, rest = _split_av(result)
                 out_parts = [head] + list(rest or [])

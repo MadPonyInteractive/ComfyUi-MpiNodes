@@ -177,9 +177,36 @@ def check_step_windows_equal_one_pass():
     print(f"ok step windows == one pass: {info.split('.')[0]}")
 
 
+def check_later_windows_read_real_frame_times():
+    """LTX 2.3/2.5 ship causal_temporal_positioning on. A window past latent 0 must be sampled with it OFF,
+    or the model reads its picture 7 frames (0.29 s) ahead of its audio: failed lip-sync + ghosting in the
+    talking-people test (Cubric Studio MPI-1450). Window 0 keeps it, and the model is left as found."""
+    sigmas = torch.tensor([0.85, 0.725, 0.4219, 0.0])
+    euler = comfy.samplers.sampler_object("euler")
+    for node in (sampler.MpiWindowedSampler(), sampler.MpiStepWindowedSampler()):
+        guider = _Guider()
+        dm = types.SimpleNamespace(causal_temporal_positioning=True)
+        guider.model_patcher.model.diffusion_model = dm
+        flags = []
+        inner = guider.sample
+
+        def sample(*a, **k):
+            flags.append(dm.causal_temporal_positioning)
+            return inner(*a, **k)
+        guider.sample = sample
+        _, _, info = node.doit(_Noise(), guider, euler, sigmas, _latent(16), 49, 17, 1)
+        n = int(info.split()[0])
+        per_pass = [True] + [False] * (n - 1)
+        want = per_pass * (3 if isinstance(node, sampler.MpiStepWindowedSampler) else 1)
+        assert flags == want, (type(node).__name__, flags)
+        assert dm.causal_temporal_positioning is True, "the flag must be restored"
+    print(f"ok later windows: causal positions off past window 1 ({n} windows), restored after")
+
+
 if __name__ == "__main__":
     torch.manual_seed(0)
     check_frame_count()
     check_windows_equal_one_pass()
     check_guides_stay_one_pass()
     check_step_windows_equal_one_pass()
+    check_later_windows_read_real_frame_times()
