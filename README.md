@@ -304,6 +304,7 @@ Ported from ComfyUI-KJNodes (GPL-3.0) and color-matcher with unchanged inputs, s
 | **MpiColorMatch** | Match an image's colours to a reference, MKL method (was ColorMatch). |
 | **MpiLTX2NAG** / **MpiLTXAudioVideoMask** / **MpiVAELoader** | LTX 2 normalized attention guidance, audio/video latent masks, and a VAE loader with device and dtype (were LTX2_NAG, LTXVAudioVideoMask, VAELoaderKJ). |
 | **MpiLoraExtract** | Extract a LoRA from the difference of two models by SVD (was LoraExtractKJ). |
+| **MpiLoraExtractFiles** | The same extract read straight from two model files (diffusion_models or checkpoints) one layer at a time: low memory, no GPU needed, scaled-FP8 fine-tunes dequantized first. |
 
 ### Memory probe (no node)
 

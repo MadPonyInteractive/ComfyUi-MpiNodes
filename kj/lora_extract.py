@@ -227,10 +227,218 @@ class MpiLoraExtract:
         return {}
 
 
+# ---------------------------------------------------------------------------------------------
+# MpiLoraExtractFiles - our own (Cubric Studio MPI-1452), not part of the KJNodes port.
+#
+# The same extract, read straight from the two files one tensor at a time, so the peak memory is
+# one layer plus the LoRA being written (a few hundred MB) instead of both models at full size
+# (about 20 GB for Wan 2.2 5B in fp16). Works with no GPU. A scaled-fp8 fine-tune (ComfyUI's
+# "scaled_fp8": an F8 weight + its `scale_weight`) is dequantized per tensor before the diff; the
+# diff itself is float32, so it is never rounded to the fine-tune's fp8 the way a patched-model
+# diff is. What it does not see: renames ComfyUI applies at load time (diffusers layouts, Flux
+# norm `.scale`), so a new model family needs its LoRA keys checked against the loaded model.
+# ---------------------------------------------------------------------------------------------
+
+# Where a file keeps its diffusion model. Bare = a diffusion-only file (UNETLoader's folder).
+_DIFFUSION_PREFIXES = ("model.diffusion_model.", "diffusion_model.")
+# Keys of an all-in-one checkpoint that are not the diffusion model.
+_NOT_DIFFUSION = ("first_stage_model.", "cond_stage_model.", "conditioner.", "text_encoders.", "vae.",
+                  "model_ema.", "embedding_manager.", "lora_te", "clip_")
+# Quantization bookkeeping, never a weight of its own.
+_QUANT_SUFFIXES = ("scale_weight", "scale_input", "weight_scale", "input_scale", "scaled_fp8", "comfy_quant")
+_FP8 = tuple(getattr(torch, n) for n in ("float8_e4m3fn", "float8_e5m2", "float8_e4m3fnuz", "float8_e5m2fnuz")
+             if hasattr(torch, n))
+_REFUSED = (torch.int8, torch.uint8, torch.int16, torch.int32)
+
+
+_ST_DTYPES = {"F64": torch.float64, "F32": torch.float32, "F16": torch.float16, "BF16": torch.bfloat16,
+              "I64": torch.int64, "I32": torch.int32, "I16": torch.int16, "I8": torch.int8, "U8": torch.uint8,
+              "BOOL": torch.bool}
+for _name, _attr in (("F8_E4M3", "float8_e4m3fn"), ("F8_E5M2", "float8_e5m2")):
+    if hasattr(torch, _attr):
+        _ST_DTYPES[_name] = getattr(torch, _attr)
+
+
+class _TensorFile:
+    """A .safetensors file read one tensor at a time with plain reads.
+
+    Not safetensors' safe_open: that memory-maps the WHOLE file, and on Windows a copy-on-write map
+    is charged to the commit limit at once (12 + 9 GB for the Wan 5B pair, measured), which is the
+    "paging file is too small" failure on a small-RAM PC. Here only the tensor being read is held.
+    """
+
+    def __init__(self, path):
+        import json  # stdlib: ComfyUI has it in sys.modules long before the pack's json.py loads
+        self._f = open(path, "rb")
+        size = int.from_bytes(self._f.read(8), "little")
+        header = json.loads(self._f.read(size))
+        header.pop("__metadata__", None)
+        self._start = 8 + size
+        self._header = header
+
+    def keys(self):
+        return list(self._header)
+
+    def __contains__(self, key):
+        return key in self._header
+
+    def get_tensor(self, key):
+        info = self._header[key]
+        if info["dtype"] not in _ST_DTYPES:
+            raise ValueError(f"{key}: tensor type {info['dtype']} is not supported.")
+        begin, end = info["data_offsets"]
+        self._f.seek(self._start + begin)
+        data = bytearray(self._f.read(end - begin))
+        dtype = _ST_DTYPES[info["dtype"]]
+        if not data:
+            return torch.empty(info["shape"], dtype=dtype)
+        return torch.frombuffer(data, dtype=dtype).reshape(info["shape"])
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self._f.close()
+
+
+def _model_files():
+    """Every model file the two folders hold, diffusion-only first, each name once."""
+    names = []
+    for folder in ("diffusion_models", "checkpoints"):
+        for n in folder_paths.get_filename_list(folder):
+            if n not in names:
+                names.append(n)
+    return sorted(names)
+
+
+def _full_path(name):
+    for folder in ("diffusion_models", "checkpoints"):
+        path = folder_paths.get_full_path(folder, name)
+        if path:
+            return path
+    raise ValueError(f"{name}: not in the diffusion_models or checkpoints folder.")
+
+
+def _diffusion_keys(keys):
+    """{bare key: file key} for the diffusion model inside a file, whatever prefix it was saved with."""
+    for prefix in _DIFFUSION_PREFIXES:
+        hit = {k[len(prefix):]: k for k in keys if k.startswith(prefix)}
+        if hit:
+            break
+    else:
+        hit = {k: k for k in keys if not k.startswith(_NOT_DIFFUSION)}
+    return {bare: k for bare, k in hit.items() if not bare.endswith(_QUANT_SUFFIXES)}
+
+
+def _read(f, key, label):
+    """One tensor as float32, a scaled-fp8 weight multiplied by its scale. Integer quants refused."""
+    t = f.get_tensor(key)
+    if t.dtype in _REFUSED:
+        raise ValueError(f"{label} is int8/integer-quantized ({key}); it cannot be extracted from. "
+                         "Use the FP16, BF16 or FP8 version of this model.")
+    if t.dtype in _FP8:
+        t = t.to(torch.float32)
+        if key.endswith("weight"):
+            stem = key[:-len("weight")]
+            for scale_key in (stem + "scale_weight", stem + "weight_scale"):
+                if scale_key in f:
+                    scale = f.get_tensor(scale_key).to(torch.float32)
+                    if scale.numel() == 1:
+                        t = t * scale
+                    elif scale.numel() == t.shape[0]:
+                        t = t * scale.reshape(-1, *([1] * (t.ndim - 1)))
+                    else:
+                        raise ValueError(f"{label}: {scale_key} is a block-wise scale, which is not supported.")
+                    break
+    return t.to(torch.float32)
+
+
+class MpiLoraExtractFiles:
+    @classmethod
+    def INPUT_TYPES(cls):
+        files = _model_files()
+        return {
+            "required": {
+                "finetuned_name": (files, {"tooltip": "The fine-tuned model (diffusion_models or checkpoints). FP16, BF16 or scaled FP8."}),
+                "original_name": (files, {"tooltip": "The original base model it was fine-tuned from."}),
+                "filename_prefix": ("STRING", {"default": "loras/extracted_lora"}),
+                "rank": ("INT", {"default": 64, "min": 1, "max": 4096, "step": 1}),
+                "algorithm": (["svd_linalg", "svd_lowrank"], {
+                    "default": "svd_lowrank",
+                    "tooltip": "SVD algorithm; svd_lowrank is faster but less accurate."}),
+                "lowrank_iters": ("INT", {"default": 7, "min": 1, "max": 100, "step": 1}),
+                "output_dtype": (["fp16", "bf16", "fp32"], {"default": "fp16"}),
+                "bias_diff": ("BOOLEAN", {"default": True}),
+                "clamp_quantile": ("BOOLEAN", {"default": False}),
+            },
+        }
+
+    CATEGORY = "MpiNodes/KJ"
+    RETURN_TYPES = ()
+    FUNCTION = "extract"
+    OUTPUT_NODE = True
+    DESCRIPTION = ("Extracts a LoRA from two model FILES one layer at a time (low memory, no GPU needed) "
+                   "and saves it under output/. A scaled-FP8 fine-tune is dequantized first.")
+
+    def extract(self, finetuned_name, original_name, filename_prefix, rank, algorithm, lowrank_iters,
+                output_dtype, bias_diff, clamp_quantile):
+        for name in (finetuned_name, original_name):
+            if not name.lower().endswith((".safetensors", ".sft")):
+                raise ValueError(f"{name}: only .safetensors files can be extracted from.")
+        dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[output_dtype]
+        device = comfy.model_management.get_torch_device()
+
+        output_dir = folder_paths.get_output_directory()
+        full_output_folder, filename, counter, subfolder, filename_prefix = folder_paths.get_save_image_path(filename_prefix, output_dir)
+
+        output_sd = {}
+        with _TensorFile(_full_path(finetuned_name)) as ft, _TensorFile(_full_path(original_name)) as base:
+            ft_keys, base_keys = _diffusion_keys(ft.keys()), _diffusion_keys(base.keys())
+            weights = [k for k in base_keys if k.endswith((".weight", ".bias"))]
+            shared = [k for k in weights if k in ft_keys]
+            if not weights or len(shared) < 0.9 * len(weights):
+                raise ValueError(
+                    f"{finetuned_name} does not look like a fine-tune of {original_name}: "
+                    f"{len(shared)} of the base's {len(weights)} weights are in both files.")
+
+            todo = [k for k in shared if k.endswith(".weight") or bias_diff]
+            pbar = comfy.utils.ProgressBar(len(todo))
+            for k in todo:
+                comfy.model_management.throw_exception_if_processing_interrupted()
+                w_ft = _read(ft, ft_keys[k], finetuned_name)
+                w_base = _read(base, base_keys[k], original_name)
+                if w_ft.shape != w_base.shape:
+                    raise ValueError(f"{k}: {list(w_ft.shape)} in the fine-tune, {list(w_base.shape)} in the base. "
+                                     "These are not the same model architecture.")
+                diff = w_ft.to(device) - w_base.to(device)
+                del w_ft, w_base
+                if k.endswith(".bias"):
+                    output_sd[f"diffusion_model.{k[:-5]}.diff_b"] = diff.contiguous().to(dtype).cpu()
+                elif diff.ndim == 5:
+                    logging.info(f"Skipping 5D tensor for key {k}")
+                elif diff.ndim < 2:
+                    if bias_diff:
+                        output_sd[f"diffusion_model.{k[:-7]}.diff"] = diff.contiguous().to(dtype).cpu()
+                else:
+                    up, down = extract_lora(diff, k, rank, algorithm, "standard", lowrank_iters=lowrank_iters,
+                                            clamp_quantile=clamp_quantile)
+                    output_sd[f"diffusion_model.{k[:-7]}.lora_up.weight"] = up.contiguous().to(dtype).cpu()
+                    output_sd[f"diffusion_model.{k[:-7]}.lora_down.weight"] = down.contiguous().to(dtype).cpu()
+                del diff
+                pbar.update(1)
+
+        file = f"{filename}_rank_{rank}_{output_dtype}_{counter:05}_.safetensors"
+        comfy.utils.save_torch_file(output_sd, os.path.join(full_output_folder, file), metadata=None)
+        comfy.model_management.soft_empty_cache()
+        return {"ui": {"lora": [{"filename": file, "subfolder": subfolder, "type": "output"}]}}
+
+
 NODE_CLASS_MAPPINGS = {
     "MpiLoraExtract": MpiLoraExtract,
+    "MpiLoraExtractFiles": MpiLoraExtractFiles,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiLoraExtract": "Mpi LoRA Extract",
+    "MpiLoraExtractFiles": "Mpi LoRA Extract (Files, Low Memory)",
 }
