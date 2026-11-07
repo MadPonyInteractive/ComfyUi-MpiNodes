@@ -190,7 +190,79 @@ class MpiPH3UpsamplerImages:
         return (torch.cat(batch, dim=0), upsampler_prompt(prompt, len(batch), aspect_ratio), len(batch))
 
 
+# Pruna's 8-step distilled schedule for the P-H3 LoRA (their lora_edit workflow).
+PRUNA_SIGMAS = (1.0, 0.984753, 0.967905, 0.951688, 0.925372, 0.881923, 0.810083, 0.528718, 0.0)
+
+
+def _sigma_at(pos: float) -> float:
+    """Pruna's curve at a fractional step index (0 = 1.0, 8 = 0.0), linear between steps."""
+    last = len(PRUNA_SIGMAS) - 1
+    pos = min(max(pos, 0.0), float(last))
+    i = min(int(pos), last - 1)
+    f = pos - i
+    return PRUNA_SIGMAS[i] + (PRUNA_SIGMAS[i + 1] - PRUNA_SIGMAS[i]) * f
+
+
+def _pos_of(sigma: float) -> float:
+    """Inverse of `_sigma_at`: where on Pruna's curve `sigma` sits."""
+    for i in range(len(PRUNA_SIGMAS) - 1):
+        hi, lo = PRUNA_SIGMAS[i], PRUNA_SIGMAS[i + 1]
+        if lo <= sigma <= hi:
+            return i + (hi - sigma) / (hi - lo)
+    return 0.0 if sigma > PRUNA_SIGMAS[0] else float(len(PRUNA_SIGMAS) - 1)
+
+
+def ph3_denoise_sigmas(denoise: float, steps: int, start_min: float, start_max: float) -> list:
+    """Map denoise to a start sigma, then `steps` steps along Pruna's curve down to 0.
+
+    Core's SplitSigmasDenoise keeps round(8*d) of Pruna's steps, and those crowd near
+    1.0, so the knob does nothing until ~0.8 and repaints above ~0.85. Here denoise is
+    linear in the START sigma (start_min at 0, start_max at 1), and the steps are spread
+    evenly in step-index along the same curve, so every run keeps Pruna's shape.
+    """
+    start = start_min + (start_max - start_min) * min(max(denoise, 0.0), 1.0)
+    p0, p1 = _pos_of(start), float(len(PRUNA_SIGMAS) - 1)
+    steps = max(int(steps), 1)
+    return [_sigma_at(p0 + (p1 - p0) * k / steps) for k in range(steps)] + [0.0]
+
+
+class MpiPH3Sigmas:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "denoise": ("FLOAT", {"default": 0.5, "min": 0.0, "max": 1.0, "step": 0.01, "tooltip": "How much of the input picture is repainted. Linear in the START sigma: 0 starts at start_min, 1 at start_max."}),
+                "steps": ("INT", {"default": 6, "min": 1, "max": 32, "tooltip": "Steps from the start sigma down to 0, spread along Pruna's 8-step curve."}),
+                "start_min": ("FLOAT", {"default": 0.6, "min": 0.0, "max": 1.0, "step": 0.001, "tooltip": "Start sigma at denoise 0. Bench: 0.5 is a near copy, 0.6 barely changes the picture."}),
+                "start_max": ("FLOAT", {"default": 0.98, "min": 0.0, "max": 1.0, "step": 0.001, "tooltip": "Start sigma at denoise 1. Bench: 0.98 is a full restyle that keeps only the rough layout; 1.0 = a text-to-image run."}),
+            },
+        }
+
+    RETURN_TYPES = ("SIGMAS",)
+    RETURN_NAMES = ("sigmas",)
+    CATEGORY = "MpiNodes/Utils"
+    DESCRIPTION = (
+        "Image-to-image sigmas for P-H3 Image. For a restyle, leave image_1 of the P-H3 conditioning EMPTY: with the picture there the edit conditioning holds it and denoise barely moves. Pruna's LoRA is distilled to 8 steps that crowd near 1.0, so "
+        "SplitSigmasDenoise gives a knob that does nothing until ~0.8 and repaints above ~0.85. This maps "
+        "denoise linearly to a start sigma between start_min and start_max and walks `steps` steps down "
+        "Pruna's own curve from there to 0. Wire into SamplerCustomAdvanced's sigmas."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, denoise, steps, start_min, start_max):
+        import torch  # lazy: the self-check runs without torch
+        return (torch.FloatTensor(ph3_denoise_sigmas(denoise, steps, start_min, start_max)),)
+
+
 if __name__ == "__main__":
+    # Sigmas: endpoints, monotone, on Pruna's curve.
+    assert all(abs(_sigma_at(_pos_of(s)) - s) < 1e-9 for s in PRUNA_SIGMAS)
+    for d in (0.0, 0.3, 0.5, 1.0):
+        s = ph3_denoise_sigmas(d, 6, 0.88, 0.99)
+        assert len(s) == 7 and s[-1] == 0.0 and all(a > b for a, b in zip(s, s[1:])), s
+        assert abs(s[0] - (0.88 + 0.11 * d)) < 1e-9, s
+    assert [round(x, 6) for x in ph3_denoise_sigmas(1.0, 8, 0.0, 1.0)] == list(PRUNA_SIGMAS)
+
     class _Img:
         def __init__(self, h, w):
             self.shape = (1, h, w, 3)

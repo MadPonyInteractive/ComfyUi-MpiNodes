@@ -112,7 +112,7 @@ from .speech import MpiSpeechToText
 from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3ImageToVideo, MpiH3Length, MpiH3MaskedPrefix, MpiH3PinFirstFrame, MpiH3References
 from .bernini import MpiBerniniConditioning, MpiBerniniLength
 from .flux3 import MpiFlux3References
-from .ph3 import MpiPH3ImageConditioning, MpiPH3UpsamplerImages
+from .ph3 import MpiPH3ImageConditioning, MpiPH3Sigmas, MpiPH3UpsamplerImages
 from .vram import MpiClearVram, MpiClearVramEnd
 from .sampler import MpiStepWindowedSampler, MpiWindowedSampler
 from .video import MpiAudioRange, MpiAudioSplice, MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio, MpiLoadVideoUpload, MpiLoadAudioUpload
@@ -288,6 +288,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiFlux3References": MpiFlux3References,
     "MpiPH3ImageConditioning": MpiPH3ImageConditioning,
     "MpiPH3UpsamplerImages": MpiPH3UpsamplerImages,
+    "MpiPH3Sigmas": MpiPH3Sigmas,
     "MpiClearVram": MpiClearVram,
     "MpiClearVramEnd": MpiClearVramEnd,
     "MpiWindowedSampler": MpiWindowedSampler,
@@ -436,6 +437,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiFlux3References": "Mpi FLUX 3 References",
     "MpiPH3ImageConditioning": "Mpi P-H3 Image Conditioning",
     "MpiPH3UpsamplerImages": "Mpi P-H3 Upsampler Images",
+    "MpiPH3Sigmas": "Mpi P-H3 Sigmas (denoise)",
     "MpiClearVram": "Mpi Clear Vram",
     "MpiClearVramEnd": "Mpi Clear Vram End",
     "MpiWindowedSampler": "Mpi Windowed Sampler",
