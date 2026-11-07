@@ -483,6 +483,10 @@ WEB_DIRECTORY = "./web"
 from .memory_probe import start as _start_memory_probe
 _start_memory_probe()
 
+# A vae_approx decoder ComfyUI cannot load falls back to the colour preview (MPI-1467).
+from .preview_guard import install as _install_preview_guard
+_install_preview_guard()
+
 __all__ = [
     "NODE_CLASS_MAPPINGS",
     "NODE_DISPLAY_NAME_MAPPINGS",
