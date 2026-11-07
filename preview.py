@@ -59,6 +59,13 @@ def _decode_clip(model, latent):
     its own 3 pad frames. Trim per chunk instead and drop the encoder's 3-token
     tail pad, as kjnodes' `TAEHVDecoder._decode_h3_full` does. Any other tiny
     decoder core sizes correctly (taeltx2_3, taehv, taew) takes the plain path.
+
+    The chunk padding added below is OUR zeros, never picture: the result never
+    keeps them. A one-token latent (P-H3 Image's still) decodes to ONE frame;
+    the fixed tail drop alone left our 4 black pad frames after it, and the
+    consumer looped picture, black, black, black, black (Cubric Studio MPI-1455).
+    A video's count is unchanged: where the tail drop already ate the pad (the
+    measured 17-token H3 clip) the two cuts agree.
     """
     if getattr(model, "latent_channels", None) != 24 or getattr(model, "patch_size", 1) != 2:
         return model.decode(latent)
@@ -69,9 +76,13 @@ def _decode_clip(model, latent):
         output_device=mm.intermediate_device(), patch_size=model.patch_size, decode=True,
     )
     chunk = 5 * model.t_upscale
-    x = F.pad(x, (0, 0, 0, 0, 0, 0, 0, -x.shape[1] % chunk))
+    decoded = x.shape[1]
+    chunks = -(-decoded // chunk)
+    x = F.pad(x, (0, 0, 0, 0, 0, 0, 0, -decoded % chunk))
     x = x.unflatten(1, (-1, chunk))[:, :, model.frames_to_trim:].flatten(1, 2)
-    x = x[:, :-3 * model.t_upscale]
+    # Decoded frames left after the per-chunk trim; the pad sits at the tail of the last chunk.
+    real = decoded - chunks * model.frames_to_trim
+    x = x[:, :min(real, x.shape[1] - 3 * model.t_upscale)]
     return x.movedim(2, 1) if x.shape[1] else model.decode(latent)
 
 
