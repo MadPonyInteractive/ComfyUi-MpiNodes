@@ -52,6 +52,25 @@ def collect_images(slots: dict):
     return images, kept
 
 
+def edit_canvas_size(width: int, height: int, canvas, max_megapixels: float):
+    """The width/height an EDIT runs at, never above `max_megapixels` (0 = no cap).
+
+    Pruna: edits are made at 4 MP; above that faces and hands go wrong. Core sizes an
+    edit from width/height when set, else from the canvas (picture 1) shrunk to 2912^2,
+    so a big photo would edit at 8.5 MP. Over the cap, the size is scaled down to it,
+    aspect kept, each side floored to the canvas grid. Never scaled up. Within the cap,
+    width/height come back unchanged (0 stays 0: core keeps the picture's own size).
+    """
+    if max_megapixels <= 0 or canvas is None:
+        return width, height
+    w, h = (width, height) if width and height else (canvas.shape[2], canvas.shape[1])
+    cap = max_megapixels * 1_000_000
+    if w * h <= cap:
+        return width, height
+    scale = (cap / (w * h)) ** 0.5
+    return tuple(max(CANVAS_MULTIPLE, int(side * scale) // CANVAS_MULTIPLE * CANVAS_MULTIPLE) for side in (w, h))
+
+
 def picture_tag_map(kept) -> str:
     """Which tag each surviving slot became - the `ref_tags` output."""
     if not kept:
@@ -68,6 +87,7 @@ class MpiPH3ImageConditioning:
         for i in range(1, MAX_IMAGES + 1):
             role = "The CANVAS: the picture being edited; the output keeps its size and aspect." if i == 1 else "Reference picture."
             optional[f"image_{i}"] = ("IMAGE", {"tooltip": f"{role} Cited in the prompt as <Picture {i}>. Leave unconnected, or feed a loader with block_if_empty OFF, to skip it."})
+        optional["edit_max_megapixels"] = ("FLOAT", {"default": 0.0, "min": 0.0, "max": 64.0, "step": 0.1, "tooltip": "With pictures (an edit), the output never goes above this many megapixels: width/height, or picture 1's own size when they are 0, is scaled down to it, aspect kept. Never scaled up. 0 = no cap. Text-to-image ignores it."})
         return {
             "required": {
                 "clip": ("CLIP",),
@@ -94,7 +114,7 @@ class MpiPH3ImageConditioning:
     )
     FUNCTION = "doit"
 
-    def doit(self, clip, vae, prompt, width=0, height=0, **kwargs):
+    def doit(self, clip, vae, prompt, width=0, height=0, edit_max_megapixels=0.0, **kwargs):
         # Imported here, not at module scope: the pack must still load on a ComfyUI
         # older than 0.44.0, where PH3ImageConditioning does not exist.
         try:
@@ -106,6 +126,7 @@ class MpiPH3ImageConditioning:
 
         images, kept = collect_images(kwargs)
         prompt = rewrite_prompt_tags(prompt, kept, [], [])
+        width, height = edit_canvas_size(width, height, images.get("image_1"), edit_max_megapixels)
         output = PH3ImageConditioning.execute(
             clip=clip, prompt=prompt, width=width, height=height,
             vae=vae, images=images or None,
@@ -286,6 +307,17 @@ if __name__ == "__main__":
 
     # Core's edit-prefix check matches "Edit <Picture"; a rewritten tag keeps that shape.
     assert rewrite_prompt_tags("Edit <Picture 1>. make it night", kept, [], []).startswith("Edit <Picture 1>.")
+
+    # Edit cap: never above it, never scaled up, t2i (no canvas) and 0 untouched.
+    assert edit_canvas_size(0, 0, None, 4.2) == (0, 0)                      # t2i
+    assert edit_canvas_size(2912, 2912, None, 4.2) == (2912, 2912)          # t2i at 8 MP
+    assert edit_canvas_size(0, 0, _Img(4000, 3000), 0) == (0, 0)            # cap off
+    assert edit_canvas_size(0, 0, _Img(1024, 768), 4.2) == (0, 0)           # small picture keeps its size
+    assert edit_canvas_size(2048, 2048, _Img(1024, 768), 4.2) == (2048, 2048)
+    w, h = edit_canvas_size(0, 0, _Img(3000, 4000), 4.2)                    # 12 MP photo, 4:3
+    assert w * h <= 4.2e6 and w % 32 == 0 and h % 32 == 0 and abs(w / h - 4 / 3) < 0.02, (w, h)
+    w, h = edit_canvas_size(3872, 2176, _Img(1024, 768), 4.2)               # custom size at 8 MP
+    assert w * h <= 4.2e6 and abs(w / h - 3872 / 2176) < 0.02, (w, h)
 
     # Empty canvas: the first surviving reference becomes the canvas.
     images, kept = collect_images({"image_3": ref})
