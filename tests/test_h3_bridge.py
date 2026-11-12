@@ -45,6 +45,40 @@ def test_bridge_holds_both_ends():
     assert ma[0, 0, 0].tolist() == [0.0] * 65 + [1.0] * 190 + [0.0] * 65
 
 
+class FakeAudioVae:
+    audio_sample_rate = 400  # 10 samples per 40 Hz latent step
+
+    def encode(self, x):  # [1, samples, C] -> [1, 32, 2, steps]; each step = its first sample
+        return x[0, ::10, 0].reshape(1, 1, 1, -1).expand(1, 32, 2, -1).clone()
+
+
+def tone(samples):
+    return {"waveform": torch.arange(1, samples + 1, dtype=torch.float32).reshape(1, 1, -1), "sample_rate": 400}
+
+
+def test_hold_audio_fills_and_freezes_the_generated_soundtrack():
+    v, a, mv, ma, _, _ = run(av(192, 0), av(124, 1), None, audio_vae=FakeAudioVae(), hold_audio=tone(30))
+    assert (a[..., :65] == 1).all()                                  # the context's own soundtrack untouched
+    assert a[0, 0, 0, 65:71].tolist() == [1.0, 11.0, 21.0, 1.0, 11.0, 21.0]   # the tone, looped
+    assert ma[0, 0, 0].tolist() == [0.0] * 320                          # nothing left to generate in sound
+    assert mv[0, 0, :, 0, 0].tolist() == [0.0] * 12 + [1.0] * 45     # the picture still generated
+
+
+def test_hold_audio_stops_at_the_held_tail():
+    v, a, mv, ma, _, _ = run(av(192, 0), av(124, 1), av(124, 2), audio_vae=FakeAudioVae(), hold_audio=tone(30))
+    assert (a[..., 255:] == 2).all() and (a[..., 65:255] != 0).all()
+    assert ma[0, 0, 0].tolist() == [0.0] * 320
+
+
+def test_hold_audio_without_vae_refuses():
+    try:
+        run(av(192, 0), av(124, 1), None, hold_audio=tone(30))
+    except ValueError as e:
+        assert "audio_vae" in str(e)
+    else:
+        raise AssertionError("expected a ValueError")
+
+
 def test_tail_takes_the_next_clips_opening_not_its_end():
     tail = av(124, 0)
     tail["samples"].tensors[0][:, :, :12] = 7

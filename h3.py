@@ -700,6 +700,28 @@ def splice_audio(original, generated, s0, s1, crossfade, mode="replace", gain=1.
     return out
 
 
+def held_audio_latent(audio, audio_vae, n_steps):
+    """`audio` looped to fill `n_steps` audio latent steps (40 per second), encoded once.
+
+    Looped as a WAVEFORM before the encode, not as latent steps after it: the
+    VAE's receptive field spans neighbouring steps, so tiled latents would carry
+    a seam the decoder renders as a click at every repeat.
+    """
+    import math
+
+    waveform, rate = audio_at_vae_rate(audio, audio_vae)
+    waveform = waveform[:1]
+    if waveform.shape[-1] == 0:
+        raise ValueError("hold_audio is empty.")
+    # a quarter second over, so the encode never comes back one step short
+    want = math.ceil((n_steps / 40 + 0.25) * rate)
+    waveform = waveform.repeat(1, 1, math.ceil(want / waveform.shape[-1]))[..., :want]
+    z = audio_vae.encode(waveform.movedim(1, -1))
+    if z.shape[-1] < n_steps:
+        raise ValueError(f"hold_audio encoded to {z.shape[-1]} steps, {n_steps} needed.")
+    return z[..., :n_steps]
+
+
 class MpiH3MaskedPrefix:
     @classmethod
     def INPUT_TYPES(cls):
@@ -730,6 +752,8 @@ class MpiH3MaskedPrefix:
                         "tooltip": "How much of the next clip's opening to keep, in frames. Snapped DOWN like context_frames. Ignored without tail_latent.",
                     },
                 ),
+                "audio_vae": ("VAE", {"tooltip": "The H3 audio VAE. Needed only with hold_audio."}),
+                "hold_audio": ("AUDIO", {"tooltip": "A SILENT stretch: written over the whole generated span's SOUNDTRACK (looped to fit) and masked out of sampling, so only the picture is generated there. A guide only suggests silence and H3 still talks over it on some seeds; a held soundtrack cannot. Use it for a span where nobody speaks. Needs audio_vae."}),
             },
         }
 
@@ -754,7 +778,7 @@ class MpiH3MaskedPrefix:
     )
     FUNCTION = "doit"
 
-    def doit(self, latent, context_latent, context_frames, tail_latent=None, tail_frames=39):
+    def doit(self, latent, context_latent, context_frames, tail_latent=None, tail_frames=39, audio_vae=None, hold_audio=None):
         # Imported here, not at module scope, so the pack still loads on a
         # ComfyUI without H3 -- same reason as MpiH3References.
         import torch
@@ -822,6 +846,14 @@ class MpiH3MaskedPrefix:
             mask_v[:, :, total_steps - t_steps:] = 0.0
             mask_a[..., mask_a.shape[-1] - t_audio:] = 0.0
 
+        held = 0
+        if hold_audio is not None:
+            if audio_vae is None:
+                raise ValueError("hold_audio needs the audio_vae input to encode it.")
+            held = out_a.shape[-1] - audio_steps - t_audio
+            out_a[..., audio_steps:audio_steps + held] = held_audio_latent(hold_audio, audio_vae, held).to(out_a)
+            mask_a[..., audio_steps:audio_steps + held] = 0.0
+
         new_frames = total_frames - frames - t_frames
         report = (
             f"context {frames} frames ({steps} latent steps, {audio_steps} audio steps)"
@@ -830,6 +862,8 @@ class MpiH3MaskedPrefix:
         if t_steps:
             report += (f"; tail {t_frames} frames ({t_steps} latent steps, {t_audio} audio steps),"
                        f" asked for {tail_frames}")
+        if held:
+            report += f"; soundtrack held over the {held} generated audio steps"
 
         out = dict(latent)
         out["samples"] = comfy.nested_tensor.NestedTensor((out_v, out_a))
