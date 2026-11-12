@@ -131,11 +131,16 @@ def _decode_cmd(ffmpeg, path, force_rate=0.0):
     30 fps clip (1.633 s), `-r 24` returns 41 frames, which declared as 24 fps plays
     1.708 s -- 4.6% slow, which is the exact speed mismatch force_rate exists to
     remove. `-vf fps=24` returns 39 (1.625 s), duration preserved.
+
+    Accurate swscale for the yuv -> rgb24 step: the default rounding read every video
+    1.2 / 1.5 / 1.6 % dark (R/G/B), and a graph that loads a video and saves it again
+    (an extend chain, an upscale of an upscale) compounded it: -4.9 / -6.3 / -6.9 % after
+    four passes, measured on a MiniMax H3 clip; with these flags +0.3 / +0.1 / +0.5 %.
     """
     cmd = [ffmpeg, "-i", path]
     if force_rate and force_rate > 0:
         cmd += ["-vf", f"fps={force_rate:g}"]
-    return cmd + ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
+    return cmd + ["-sws_flags", "accurate_rnd+full_chroma_int", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
 
 
 def _decode_frames(ffmpeg, path, w, h, force_rate=0.0):
