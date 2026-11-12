@@ -700,14 +700,29 @@ def splice_audio(original, generated, s0, s1, crossfade, mode="replace", gain=1.
     return out
 
 
-def held_audio_latent(audio, audio_vae, n_steps):
+HOLD_LEAD_STEPS = 40   # the context's last second of sound, encoded with the held soundtrack
+HOLD_EDGE_STEPS = 2    # a bare decode ends on a ~50 ms edge artefact: the hand-over starts before it
+HOLD_FADE_STEPS = 20   # 0.5 s from the context's own sound into the held one
+
+
+def held_audio_latent(audio, audio_vae, n_steps, lead=None):
     """`audio` looped to fill `n_steps` audio latent steps (40 per second), encoded once.
 
     Looped as a WAVEFORM before the encode, not as latent steps after it: the
     VAE's receptive field spans neighbouring steps, so tiled latents would carry
     a seam the decoder renders as a click at every repeat.
+
+    `lead` (the context's last audio latent steps) makes the held span CONTINUE
+    the context instead of starting cold: it is decoded, the held span opens on
+    its own sound played backwards from the hand-over (no jump in level or room)
+    and crossfades into `audio`, and the whole run is encoded as ONE waveform.
+    A held span encoded alone starts on a different sound from a separate encode,
+    and H3 draws that hand-over as a cut (Cubric Studio MPI-1437 B3 runs 6 + 7: a
+    5 % zoom-out on the first generated frame, in every held run and no unheld one).
     """
     import math
+
+    import torch
 
     waveform, rate = audio_at_vae_rate(audio, audio_vae)
     waveform = waveform[:1]
@@ -716,10 +731,34 @@ def held_audio_latent(audio, audio_vae, n_steps):
     # a quarter second over, so the encode never comes back one step short
     want = math.ceil((n_steps / 40 + 0.25) * rate)
     waveform = waveform.repeat(1, 1, math.ceil(want / waveform.shape[-1]))[..., :want]
+    lead_steps = 0
+    if lead is not None and lead.shape[-1] > HOLD_EDGE_STEPS + 1:
+        lead_steps = lead.shape[-1]
+        lead_wave = audio_vae.decode(lead).movedim(-1, 1)[:1].to(waveform)
+        per_step = lead_wave.shape[-1] // lead_steps
+        lead_wave = lead_wave[..., :lead_steps * per_step]
+        if lead_wave.shape[1] != waveform.shape[1]:
+            if waveform.shape[1] == 1:
+                waveform = waveform.expand(-1, lead_wave.shape[1], -1)
+            elif lead_wave.shape[1] == 1:
+                lead_wave = lead_wave.expand(-1, waveform.shape[1], -1)
+            else:
+                c = min(waveform.shape[1], lead_wave.shape[1])
+                waveform, lead_wave = waveform[:, :c], lead_wave[:, :c]
+        edge = HOLD_EDGE_STEPS * per_step
+        keep = lead_wave.shape[-1] - edge
+        fade = min(HOLD_FADE_STEPS * per_step, keep)
+        # the context's sound mirrored at the hand-over: the same value, level and room on both sides of it
+        mirror = lead_wave[..., keep - fade:keep].flip(-1)
+        tone = waveform[..., :fade]
+        t = (torch.arange(fade, dtype=waveform.dtype) + 0.5) / fade
+        # equal power: the two sounds do not correlate, a linear pair dips through the middle
+        cross = mirror * torch.cos(t * math.pi / 2) + tone * torch.sin(t * math.pi / 2)
+        waveform = torch.cat([lead_wave[..., :keep], cross, waveform[..., fade:]], -1)
     z = audio_vae.encode(waveform.movedim(1, -1))
-    if z.shape[-1] < n_steps:
-        raise ValueError(f"hold_audio encoded to {z.shape[-1]} steps, {n_steps} needed.")
-    return z[..., :n_steps]
+    if z.shape[-1] < lead_steps + n_steps:
+        raise ValueError(f"hold_audio encoded to {z.shape[-1] - lead_steps} steps, {n_steps} needed.")
+    return z[..., lead_steps:lead_steps + n_steps]
 
 
 class MpiH3MaskedPrefix:
@@ -851,7 +890,8 @@ class MpiH3MaskedPrefix:
             if audio_vae is None:
                 raise ValueError("hold_audio needs the audio_vae input to encode it.")
             held = out_a.shape[-1] - audio_steps - t_audio
-            out_a[..., audio_steps:audio_steps + held] = held_audio_latent(hold_audio, audio_vae, held).to(out_a)
+            lead = out_a[..., max(0, audio_steps - HOLD_LEAD_STEPS):audio_steps]
+            out_a[..., audio_steps:audio_steps + held] = held_audio_latent(hold_audio, audio_vae, held, lead).to(out_a)
             mask_a[..., audio_steps:audio_steps + held] = 0.0
 
         new_frames = total_frames - frames - t_frames

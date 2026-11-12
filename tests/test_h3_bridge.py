@@ -51,17 +51,34 @@ class FakeAudioVae:
     def encode(self, x):  # [1, samples, C] -> [1, 32, 2, steps]; each step = its first sample
         return x[0, ::10, 0].reshape(1, 1, 1, -1).expand(1, 32, 2, -1).clone()
 
+    def decode(self, z):  # [1, 32, 2, steps] -> [1, samples, 1]; each step = 10 samples of its value
+        return z[0, 0, 0].repeat_interleave(10).reshape(1, -1, 1).clone()
 
-def tone(samples):
-    return {"waveform": torch.arange(1, samples + 1, dtype=torch.float32).reshape(1, 1, -1), "sample_rate": 400}
+
+def tone(samples, value=None):
+    w = torch.arange(1, samples + 1, dtype=torch.float32) if value is None else torch.full((samples,), float(value))
+    return {"waveform": w.reshape(1, 1, -1), "sample_rate": 400}
 
 
 def test_hold_audio_fills_and_freezes_the_generated_soundtrack():
     v, a, mv, ma, _, _ = run(av(192, 0), av(124, 1), None, audio_vae=FakeAudioVae(), hold_audio=tone(30))
     assert (a[..., :65] == 1).all()                                  # the context's own soundtrack untouched
-    assert a[0, 0, 0, 65:71].tolist() == [1.0, 11.0, 21.0, 1.0, 11.0, 21.0]   # the tone, looped
+    # past the 0.5 s hand-over (20 steps, opened 2 steps early, before the decode's edge): the tone, looped
+    assert a[0, 0, 0, 65 + 18:65 + 24].tolist() == [21.0, 1.0, 11.0, 21.0, 1.0, 11.0]
     assert ma[0, 0, 0].tolist() == [0.0] * 320                          # nothing left to generate in sound
     assert mv[0, 0, :, 0, 0].tolist() == [0.0] * 12 + [1.0] * 45     # the picture still generated
+
+
+def test_hold_audio_continues_the_context_sound():
+    # context sound 1, tone 5: the held span opens on the context's own level and crossfades into the tone -
+    # a held span encoded alone opened on the tone at once, and H3 drew that hand-over as a cut (MPI-1437 B3)
+    _, a, _, ma, _, _ = run(av(192, 0), av(124, 1), None, audio_vae=FakeAudioVae(), hold_audio=tone(30, 5))
+    held = a[0, 0, 0, 65:].tolist()
+    assert held[0] < 2.0, held[:3]
+    # equal power climbs smoothly (it peaks just over 5, at sqrt(1 + 25), near its end)
+    assert all(x < y for x, y in zip(held[:12], held[1:12])), held[:12]
+    assert max(held) < 5.2 and held[17] > 4.5 and all(abs(x - 5) < 1e-6 for x in held[18:]), held[15:21]
+    assert ma[0, 0, 0].tolist() == [0.0] * 320
 
 
 def test_hold_audio_stops_at_the_held_tail():
