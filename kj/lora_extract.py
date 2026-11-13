@@ -18,6 +18,7 @@ import os
 
 import torch
 
+import comfy.model_detection  # type: ignore
 import comfy.model_management  # type: ignore
 import comfy.utils  # type: ignore
 import folder_paths  # type: ignore
@@ -321,7 +322,11 @@ def _full_path(name):
 
 def _diffusion_keys(keys):
     """{bare key: file key} for the diffusion model inside a file, whatever prefix it was saved with."""
-    for prefix in _DIFFUSION_PREFIXES:
+    keys = list(keys)
+    # ComfyUI's own choice first (model.diffusion_model. / model.model. for audio / net.), so the
+    # LoRA keys are the names the loaded model has. Its "model." is a no-match fallback, not a pick.
+    picked = comfy.model_detection.unet_prefix_from_state_dict(dict.fromkeys(keys))
+    for prefix in ((picked,) if picked != "model." else ()) + _DIFFUSION_PREFIXES:
         hit = {k[len(prefix):]: k for k in keys if k.startswith(prefix)}
         if hit:
             break

@@ -123,6 +123,26 @@ def test_checkpoint_finetune_vs_bare_base():
         assert all(v.dtype == torch.float16 for v in got16.values())
 
 
+def test_audio_checkpoint_prefix():
+    """Stable Audio keeps its diffusion model under model.model. (ComfyUI's audio prefix) next to
+    its VAE under pretransform.model.: the LoRA must name the diffusion keys bare, and skip the VAE."""
+    big = {f"blocks.{i}.attn.weight": (8, 8) for i in range(6)}
+    base = {k: torch.randn(*s, generator=G) for k, s in big.items()}
+    ft = {k: v + _low_rank_delta(v.shape) for k, v in base.items()}
+
+    def ckpt(sd):
+        out = {"model.model." + k: v for k, v in sd.items()}
+        out["pretransform.model.decoder.weight"] = torch.randn(4, 4, generator=G)
+        out["conditioner.conditioners.seconds_total.embedder.embedding.1.weight"] = torch.randn(4, 1, generator=G)
+        return out
+
+    with _Env() as env:
+        env.put("checkpoints", "sa_base.safetensors", ckpt(base))
+        env.put("checkpoints", "sa_ft.safetensors", ckpt(ft))
+        got, _ = env.run("sa_ft.safetensors", "sa_base.safetensors")
+        assert sorted({k.rsplit(".", 2)[0] for k in got}) == sorted("diffusion_model." + k[:-7] for k in big), sorted(got)
+
+
 def test_scaled_fp8_dequant():
     f8 = torch.float8_e4m3fn
     base = _base()
