@@ -84,6 +84,23 @@ def test_force_rate_keeps_the_flags():
     assert cmd[-5:] == ["-f", "rawvideo", "-pix_fmt", "rgb24", "-"]
 
 
+def test_streamed_decode_matches_the_pipe():
+    """_decode_frames reads in 8-frame chunks (MPI-1517 RAM peak): a 13-frame clip, which ends mid-chunk,
+    still comes back whole and bit-identical to the plain whole-pipe read."""
+    work = tempfile.mkdtemp(prefix="mpi_video_decode_")
+    try:
+        src = os.path.join(work, "odd.mp4")
+        subprocess.run([FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i",
+                        f"testsrc2=s={W}x{H}:r=24:d=0.5417,noise=alls=12:allf=t",
+                        "-frames:v", "13", "-c:v", "libx264", "-pix_fmt", "yuv420p", src], check=True)
+        ref = frames(video._decode_cmd(FFMPEG, src))
+        got, n = video._decode_frames(FFMPEG, src, W, H)
+        assert n == len(ref) == 13, f"frames {n} vs {len(ref)}"
+        assert np.array_equal(got.numpy(), ref.astype(np.float32) / 255.0)
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

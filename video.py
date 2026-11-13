@@ -148,20 +148,50 @@ def _decode_frames(ffmpeg, path, w, h, force_rate=0.0):
     rgb24 pipe. One ffmpeg pass, no intermediate files, no preview.
 
     force_rate > 0 resamples to that frame rate during the same pass - no
-    second decode and no interpolation model."""
+    second decode and no interpolation model.
+
+    The pipe is read in uint8 chunks, then each chunk is converted into one
+    preallocated float32 tensor and dropped. The old whole-buffer
+    astype + divide peaked near 9x the uint8 size; this holds the uint8
+    frames (1x) plus the result (4x), and only the pages already written
+    count toward the working set (MPI-1517)."""
     import torch  # type: ignore
     import numpy as np  # type: ignore
 
-    proc = subprocess.run(_decode_cmd(ffmpeg, path, force_rate), capture_output=True)
-    if proc.returncode != 0 or not proc.stdout:
-        tail = proc.stderr.decode("utf-8", "replace")[-2000:]
-        raise RuntimeError(f"[MpiLoadVideo] ffmpeg decode failed:\n{tail}")
-
     frame_bytes = w * h * 3
-    n = len(proc.stdout) // frame_bytes
-    arr = np.frombuffer(proc.stdout[: n * frame_bytes], dtype=np.uint8)
-    arr = arr.reshape(n, h, w, 3).astype(np.float32) / 255.0
-    return torch.from_numpy(arr), n
+    chunk_frames = 8
+    chunks = []
+    with tempfile.TemporaryFile() as err:
+        proc = subprocess.Popen(_decode_cmd(ffmpeg, path, force_rate), stdout=subprocess.PIPE, stderr=err)
+        eof = False
+        while not eof:
+            buf = bytearray(frame_bytes * chunk_frames)
+            view, got = memoryview(buf), 0
+            while got < len(buf):
+                r = proc.stdout.readinto(view[got:])
+                if not r:
+                    eof = True
+                    break
+                got += r
+            view.release()
+            if got >= frame_bytes:
+                chunks.append(buf if got == len(buf) else buf[:got])
+        proc.stdout.close()
+        n = sum(len(b) // frame_bytes for b in chunks)
+        if proc.wait() != 0 or n == 0:
+            err.seek(0)
+            tail = err.read().decode("utf-8", "replace")[-2000:]
+            raise RuntimeError(f"[MpiLoadVideo] ffmpeg decode failed:\n{tail}")
+
+    out = torch.empty((n, h, w, 3), dtype=torch.float32)
+    i = 0
+    for j, buf in enumerate(chunks):
+        k = len(buf) // frame_bytes
+        src = np.frombuffer(buf, dtype=np.uint8, count=k * frame_bytes).reshape(k, h, w, 3)  # writable: no torch warning
+        out[i : i + k].copy_(torch.from_numpy(src)).div_(255.0)
+        i += k
+        chunks[j] = buf = src = None
+    return out, n
 
 
 def _load_audio(ffmpeg, path):
