@@ -121,6 +121,7 @@ from .preview import MpiVideoSamplingPreview, MpiTinyVaeLoader
 from .splat import MpiBrushTrain
 from .scene import MpiPanoDepth, MpiLiftDepth, MpiWrapPad, MpiWrapCrop, MpiWrapSoften, MpiWrapCutMerge
 from .grade import MpiGradeMatch, MpiGradeBack
+from .lipsync import MpiFaceTrackCrop, MpiFaceTrackPaste
 from .detailer import (
     NODE_CLASS_MAPPINGS as DETAILER_CLASS_MAPPINGS,
     NODE_DISPLAY_NAME_MAPPINGS as DETAILER_DISPLAY_NAME_MAPPINGS,
@@ -316,6 +317,8 @@ NODE_CLASS_MAPPINGS = {
     "MpiWrapCutMerge": MpiWrapCutMerge,
     "MpiGradeMatch": MpiGradeMatch,
     "MpiGradeBack": MpiGradeBack,
+    "MpiFaceTrackCrop": MpiFaceTrackCrop,
+    "MpiFaceTrackPaste": MpiFaceTrackPaste,
     # TESTS
     # "MpiDummyToggleNode": MpiDummyToggleNode,
     # "MpiDynamicCombo": MpiDynamicCombo,
@@ -465,6 +468,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiWrapCutMerge": "Mpi Wrap Cut Merge",
     "MpiGradeMatch": "Mpi Grade Match",
     "MpiGradeBack": "Mpi Grade Back",
+    "MpiFaceTrackCrop": "Mpi Face Track Crop",
+    "MpiFaceTrackPaste": "Mpi Face Track Paste",
 }
 
 NODE_CLASS_MAPPINGS.update(DETAILER_CLASS_MAPPINGS)
