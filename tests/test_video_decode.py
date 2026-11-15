@@ -101,6 +101,31 @@ def test_streamed_decode_matches_the_pipe():
         shutil.rmtree(work, ignore_errors=True)
 
 
+def test_video_without_sound_gives_silent_audio():
+    """A clip with no audio stream must load with the 1-sample silent sentinel, not None (Cubric Studio MPI-1571).
+    None went into an MpiPacker, came out of MpiUnpacker as an ExecutionBlocker, and blocked MpiH3References:
+    an H3 Reference run with a soundless <Video 1> ended with no output and no error."""
+    import folder_paths  # type: ignore
+    from comfy_execution.graph import ExecutionBlocker  # type: ignore
+    switches = importlib.import_module("mpinodes.switches")
+
+    work = tempfile.mkdtemp(prefix="mpi_video_silent_", dir=folder_paths.get_temp_directory())
+    try:
+        src = os.path.join(work, "mute.mp4")
+        subprocess.run([FFMPEG, "-v", "error", "-y", "-f", "lavfi", "-i", f"testsrc2=s={W}x{H}:r=24:d=0.5",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", src], check=True)
+        out = video.MpiLoadVideo().load(src, block_if_empty=False)
+        images, audio, has_audio, loaded = out[0], out[1], out[7], out[8]
+        assert loaded and images.shape[0] == 12, f"loaded={loaded} frames={images.shape[0]}"
+        assert has_audio is False
+        assert isinstance(audio, dict) and audio["waveform"].shape[-1] <= 1, f"audio={audio!r}"
+        packed = switches.MpiPacker().pack(any_1=images, any_2=audio)[0]
+        unpacked = switches.MpiUnpacker().unpack(packed)
+        assert not isinstance(unpacked[1], ExecutionBlocker), "the soundtrack slot blocks the graph"
+    finally:
+        shutil.rmtree(work, ignore_errors=True)
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_") and callable(fn):

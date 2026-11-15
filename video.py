@@ -194,6 +194,13 @@ def _decode_frames(ffmpeg, path, w, h, force_rate=0.0):
     return out, n
 
 
+def _silent_audio():
+    """The loaders' 1-sample silent sentinel: an AUDIO value that means "no sound"."""
+    import torch  # type: ignore
+
+    return {"waveform": torch.zeros((1, 1, 1), dtype=torch.float32), "sample_rate": 44100}
+
+
 def _load_audio(ffmpeg, path):
     """Extract audio as a ComfyUI AUDIO dict, or None if the file has no audio
     track. Decodes to a temp WAV then reads it back."""
@@ -303,8 +310,7 @@ class MpiLoadVideo:
             b = ExecutionBlocker(None)
             return (b, b, 0.0, 0, 0.0, 0, 0, False, False)
         image = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
-        audio = {"waveform": torch.zeros((1, 1, 1), dtype=torch.float32), "sample_rate": 44100}
-        return (image, audio, 0.0, 0, 0.0, 0, 0, False, False)
+        return (image, _silent_audio(), 0.0, 0, 0.0, 0, 0, False, False)
 
     def load(self, string, block_if_empty=True, force_rate=0.0):
         path = resolve_input_file(string)
@@ -322,7 +328,10 @@ class MpiLoadVideo:
             fps = rate  # report the rate the frames actually came out at
         audio = _load_audio(ffmpeg, path)
         duration = n / fps if fps else 0.0
-        return (images, audio, fps, n, duration, w, h, audio is not None, True)
+        # A soundless clip still hands down the silent sentinel: a None here is
+        # turned into an ExecutionBlocker by MpiUnpacker and silently blocks
+        # every node after it (MPI-1571). has_audio stays False.
+        return (images, audio or _silent_audio(), fps, n, duration, w, h, audio is not None, True)
 
 
 class MpiLoadVideoUpload(MpiLoadVideo):
