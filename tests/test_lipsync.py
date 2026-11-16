@@ -30,7 +30,7 @@ def _clip(face_px=(40, 60), grow=0):
 
 def test_crop_follows_the_face_and_masks_only_the_lower_face():
     img, face, lips = _clip()
-    crop, mask, info = track_crop(img, face, lips, size=128, zoom=False)
+    crop, mask, info, _lf = track_crop(img, face, lips, size=128, zoom=False)
     assert crop.shape == (N, 128, 128, 3) and mask.shape == (N, 128, 128)
     assert len(set(info["sides"])) == 1  # zoom off: one side
     xs = [o[0] for o in info["origins"]]
@@ -45,7 +45,7 @@ def test_crop_follows_the_face_and_masks_only_the_lower_face():
 
 def test_zoom_keeps_a_growing_face_the_same_size_in_the_crop():
     img, face, lips = _clip(face_px=(20, 30), grow=10)
-    _, mask, info = track_crop(img, face, lips, size=128, zoom=True)
+    _, mask, info, _lf = track_crop(img, face, lips, size=128, zoom=True)
     assert info["sides"][-1] > info["sides"][0] * 1.5
     # the masked area, in crop pixels, stays about the same through the clip
     a0, a1 = float(mask[4].sum()), float(mask[-2].sum())  # past the 96 px side floor
@@ -54,8 +54,8 @@ def test_zoom_keeps_a_growing_face_the_same_size_in_the_crop():
 
 def test_hard_cut_lowers_the_mask_top():
     img, face, lips = _clip()
-    _, soft, _ = track_crop(img, face, lips, size=128, zoom=False, top_cut=0.1)
-    _, hard, _ = track_crop(img, face, lips, size=128, zoom=False, top_cut=0.1, hard_cut=True)
+    _, soft, _, _lf = track_crop(img, face, lips, size=128, zoom=False, top_cut=0.1)
+    _, hard, _, _lf = track_crop(img, face, lips, size=128, zoom=False, top_cut=0.1, hard_cut=True)
     top = lambda m: int(torch.nonzero(m.any(1)).flatten()[0])
     assert top(hard[4]) > top(soft[4])
 
@@ -64,8 +64,8 @@ def test_mouth_objects_outside_the_face_are_ignored():
     img, face, lips = _clip()
     car = lips.clone()
     car[:, 100:110, 150:190] = 1  # a second tracked "mouth" object far from the face
-    _, a, _ = track_crop(img, face, lips, size=128, zoom=False)
-    _, b, _ = track_crop(img, face, car, size=128, zoom=False)
+    _, a, _, _lf = track_crop(img, face, lips, size=128, zoom=False)
+    _, b, _, _lf = track_crop(img, face, car, size=128, zoom=False)
     assert torch.equal(a, b)
 
 
@@ -86,7 +86,7 @@ def test_lab_round_trip():
 
 def test_paste_keeps_outside_and_grades_the_inside_back():
     img, face, lips = _clip()
-    crop, mask, info = track_crop(img, face, lips, size=128, zoom=False)
+    crop, mask, info, _lf = track_crop(img, face, lips, size=128, zoom=False)
     dark = (crop * 0.85).clamp(0, 1)  # what a video model hands back: the same face, darker
     out = track_paste(img, dark, mask, info, color_match=True)
     raw = track_paste(img, dark, mask, info, color_match=False)
@@ -103,8 +103,33 @@ def test_paste_keeps_outside_and_grades_the_inside_back():
 
 def test_paste_keeps_the_shortest_count():
     img, face, lips = _clip()
-    crop, mask, info = track_crop(img, face, lips, size=128, zoom=False)
+    crop, mask, info, _lf = track_crop(img, face, lips, size=128, zoom=False)
     assert track_paste(img, crop[:7], mask, info).shape[0] == 7
+
+def test_lips_free_is_zero_over_the_grown_lips_only():
+    img, face, lips = _clip(face_px=(80, 120))
+    _, mask, info, free = track_crop(img, face, lips, size=128, zoom=False)
+    assert free.shape == (N, 128, 128)
+    for i in range(N):
+        s, (x, y) = info["sides"][i], info["origins"][i]
+        k = 128 / s
+        ly, lx = torch.nonzero(lips[i]).float().mean(0)  # the lips' centre in source px
+        cy, cx = int((ly - y) * k), int((lx - x) * k)
+        assert free[i, cy, cx] == 0  # the lips are free
+        assert free[i, :5].min() == 1  # the top of the crop (eyes, hair) is held
+        assert 0 < (free[i] == 0).float().mean() < 0.9
+    # grown by 40 px at 512 = 10 px at 128: the zero area reaches past the lips' own box
+    lb = torch.nonzero(lips[0])
+    top_c = int((lb[:, 0].min() - info["origins"][0][1]) * 128 / info["sides"][0])
+    rows = torch.nonzero((free[0] == 0).any(1)).flatten()
+    assert rows[0] <= top_c - 8, (int(rows[0]), top_c)
+
+
+def test_lips_free_without_a_mouth_mask_holds_everything():
+    img, face, _ = _clip()
+    *_, free = track_crop(img, face, None, size=128, zoom=False)
+    assert free.min() == 1
+
 
 
 if __name__ == "__main__":

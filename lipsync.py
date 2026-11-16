@@ -9,6 +9,7 @@ import torch.nn.functional as F  # type: ignore
 FACE_CROP = "MPI_FACE_CROP"
 _MIN_PX = 20  # a mask with fewer pixels than this on a frame is "no face on this frame"
 _GRADE_FRAMES = 3
+_LIPS_FREE_GROW = 40  # px at a 512 crop: the bench's lips-free guide mask (MPI-538 fix A4)
 
 
 def _box(m):
@@ -32,15 +33,15 @@ def _masks(mask, n, h, w):
 
 
 def _dilate(m, r):
-    """Grow a (H, W) 0/1 float mask by r px: square and cross 3x3 passes in turn make an octagon, close to the
-    ellipse kernel the bench used at a fraction of a big kernel's cost."""
-    x = m[None, None]
+    """Grow a (H, W) or (N, H, W) 0/1 float mask by r px: square and cross 3x3 passes in turn make an octagon,
+    close to the ellipse kernel the bench used at a fraction of a big kernel's cost."""
+    x = m[None, None] if m.dim() == 2 else m[:, None]
     for k in range(int(r)):
         if k % 2 == 0:
             x = F.max_pool2d(x, 3, 1, 1)
         else:
             x = torch.maximum(F.max_pool2d(x, (1, 3), 1, (0, 1)), F.max_pool2d(x, (3, 1), 1, (1, 0)))
-    return x[0, 0]
+    return x[0, 0] if m.dim() == 2 else x[:, 0]
 
 
 def track_crop(images, face_mask, mouth_mask=None, size=512, zoom=True, scale=1.9, top_cut=0.35, hard_cut=False):
@@ -53,7 +54,9 @@ def track_crop(images, face_mask, mouth_mask=None, size=512, zoom=True, scale=1.
     the way from the lips' top up to the face's top (0.35 reaches the nose; ~0.1 is just above the lips, for
     cartoon faces whose big eyes sit low). hard_cut re-cuts after the grow, which pushes the edge back up.
     The mouth mask may hold every tracked object: only its pixels inside the face's box count.
-    Frames with no face get an empty mask and an interpolated crop."""
+    Frames with no face get an empty mask and an interpolated crop.
+    Also returned: the lips-free mask, 1 everywhere but 0 over the lips grown by 40 px at 512 (scaled with size),
+    for source frames used as LTXVAddGuide keyframes: they hold the head and jaw, the lips stay free."""
     img = images[..., :3].float().cpu()
     n, h, w, _ = img.shape
     face = _masks(face_mask, n, h, w)
@@ -79,12 +82,13 @@ def track_crop(images, face_mask, mouth_mask=None, size=512, zoom=True, scale=1.
     ox = np.clip(np.round(cx - sides / 2), 0, w - sides).astype(int)
     oy = np.clip(np.round(cy - sides / 2), 0, h - sides).astype(int)
 
-    crops, masks = [], []
+    crops, masks, lipc = [], [], []
     for i in range(n):
         s, x, y = int(sides[i]), int(ox[i]), int(oy[i])
         c = img[i, y:y + s, x:x + s].movedim(-1, 0)[None]
         crops.append(F.interpolate(c, size=(size, size), mode="bicubic", align_corners=False, antialias=True)[0].movedim(0, -1))
         m = torch.zeros(s, s)
+        lc = torch.zeros(s, s)
         if fb[i] is not None:
             x0, y0, x1, y1 = fb[i]
             inbox = torch.zeros(h, w, dtype=torch.bool)
@@ -97,9 +101,11 @@ def track_crop(images, face_mask, mouth_mask=None, size=512, zoom=True, scale=1.
             if lb:
                 fm |= lips
             m = fm[y:y + s, x:x + s].float()
+            lc = lips[y:y + s, x:x + s].float()
             cut_c = cut - y  # the cut in crop rows
         k = size / s
         m = F.interpolate(m[None, None], size=(size, size), mode="nearest")[0, 0]
+        lipc.append(F.interpolate(lc[None, None], size=(size, size), mode="nearest")[0, 0])
         if fb[i] is not None:
             g = max(1, round(growf[i] * k))
             m = _dilate(m, g)
@@ -108,7 +114,8 @@ def track_crop(images, face_mask, mouth_mask=None, size=512, zoom=True, scale=1.
         masks.append((m > 0.5).float())
     info = {"src_w": w, "src_h": h, "size": size, "frames": n,
             "origins": np.stack([ox, oy], 1).tolist(), "sides": sides.tolist()}
-    return torch.stack(crops).clamp_(0.0, 1.0), torch.stack(masks), info
+    lips_free = 1.0 - (_dilate(torch.stack(lipc), max(1, round(_LIPS_FREE_GROW * size / 512))) > 0.5).float()
+    return torch.stack(crops).clamp_(0.0, 1.0), torch.stack(masks), info, lips_free
 
 
 # sRGB D65 <-> CIE LAB, the colour space the bench's grade was measured in.
@@ -210,13 +217,14 @@ class MpiFaceTrackCrop:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "MASK", FACE_CROP)
-    RETURN_NAMES = ("crop", "mask", "crop_info")
+    RETURN_TYPES = ("IMAGE", "MASK", FACE_CROP, "MASK")
+    RETURN_NAMES = ("crop", "mask", "crop_info", "lips_free")
     CATEGORY = "MpiNodes/ImgOps"
     DESCRIPTION = (
         "A square crop that follows a tracked face through a video (smoothed so it does not shake), scaled to one "
         "size, plus the lower-face mask in the same space: the face from a cut line down, plus the lips, grown. "
-        "For re-making only the mouth of a clip (lipsync); MpiFaceTrackPaste puts the result back."
+        "For re-making only the mouth of a clip (lipsync); MpiFaceTrackPaste puts the result back. lips_free: 1 "
+        "everywhere but the lips (grown), the attention mask for source frames fed as guide keyframes."
     )
     FUNCTION = "doit"
 
