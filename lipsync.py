@@ -21,6 +21,27 @@ def _box(m):
     return int(xs[0]), int(ys[0]), int(xs[-1]), int(ys[-1])
 
 
+def _face_box(m):
+    """_box of the face's largest blob only. A stray mask pixel far from the face (SAM3 left one on i2v_006's last
+    frame, 440 px away) stretched the box across the frame, and the smoothing spread that over the last 4 frames:
+    the zoom crop leapt out, the face shrank in it and the re-made jaw fell apart (MPI-538, LipSync 15).
+    Blobs are found at a quarter of the size, grown by one cell, so pieces a few px apart stay one face."""
+    if int(m.sum()) < _MIN_PX:
+        return None
+    h, w = m.shape
+    low = F.max_pool2d(m[None, None].float(), 4, 4, ceil_mode=True)
+    low = F.max_pool2d(low, 3, 1, 1)[0, 0]
+    lab = torch.arange(1, low.numel() + 1, dtype=torch.float32).reshape(low.shape) * low
+    while True:  # every cell takes its blob's highest id
+        nxt = F.max_pool2d(lab[None, None], 3, 1, 1)[0, 0] * low
+        if torch.equal(nxt, lab):
+            break
+        lab = nxt
+    ids, counts = torch.unique(lab[low > 0], return_counts=True)
+    keep = (lab == ids[counts.argmax()]).repeat_interleave(4, 0).repeat_interleave(4, 1)[:h, :w]
+    return _box(m & keep)
+
+
 def _masks(mask, n, h, w):
     m = (mask if mask.dim() == 3 else mask.unsqueeze(0)).float().cpu()
     if m.shape[1:] != (h, w):
@@ -62,7 +83,7 @@ def track_crop(images, face_mask, mouth_mask=None, size=512, zoom=True, scale=1.
     face = _masks(face_mask, n, h, w)
     mouth = _masks(mouth_mask, n, h, w) if mouth_mask is not None else torch.zeros_like(face)
 
-    fb = [_box(face[i]) for i in range(n)]
+    fb = [_face_box(face[i]) for i in range(n)]
     idx = [i for i, b in enumerate(fb) if b is not None]
     if not idx:
         raise ValueError("MpiFaceTrackCrop: no face found in any frame. The face must be visible and facing the camera.")

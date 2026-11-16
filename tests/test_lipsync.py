@@ -69,6 +69,16 @@ def test_mouth_objects_outside_the_face_are_ignored():
     assert torch.equal(a, b)
 
 
+def test_a_stray_face_pixel_far_away_does_not_move_the_crop():
+    img, face, lips = _clip()
+    stray = face.clone()
+    stray[-1, H - 5, W - 5] = 1  # one SAM3 pixel far from the face on the last frame (i2v_006, MPI-538)
+    _, a, ia, _ = track_crop(img, face, lips, size=128, zoom=True)
+    _, b, ib, _ = track_crop(img, stray, lips, size=128, zoom=True)
+    assert ia["sides"] == ib["sides"] and ia["origins"] == ib["origins"]
+    assert torch.equal(a, b)
+
+
 def test_no_face_raises():
     img, face, lips = _clip()
     try:
