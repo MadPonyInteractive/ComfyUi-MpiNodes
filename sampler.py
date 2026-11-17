@@ -28,6 +28,11 @@ import comfy.utils  # type: ignore
 import latent_preview  # type: ignore
 from comfy.nested_tensor import NestedTensor  # type: ignore
 
+try:
+    from .h3_keyframes import window_keyframes
+except ImportError:  # run outside the package (tests)
+    from h3_keyframes import window_keyframes
+
 
 def latent_to_frames(t, grid, ratio, causal=False):
     """Video frames a run of `t` latent frames carries.
@@ -361,6 +366,39 @@ def _window_positions(guider, start):
             dm.causal_temporal_positioning = True
 
 
+@contextlib.contextmanager
+def _window_keyframes(guider, start, end, total, audio_span):
+    """Give a window only the MiniMax H3 keyframes inside it, at the window's own frames.
+
+    H3 anchors (`minimax_keyframes`: first/last frame, MiniMaxH3AddGuide,
+    MpiH3AddGuides) ride in the conditioning at the WHOLE clip's frame numbers.
+    A window is sampled as a clip of its own, so handed them unchanged every
+    window anchored every key at the clip's frame index: a key at frame 200 sat
+    at frame 200 of a 124-frame window, and an i2v first frame re-pinned the
+    start of every window (Cubric Studio MPI-1191). `window_keyframes` keeps the
+    ones inside the window and moves them onto its timeline; a window holding
+    none loses the key, so the model sees no keyframe rows at all.
+    """
+    swapped = []
+    for name, conds in (getattr(guider, "original_conds", None) or {}).items():
+        if any(isinstance(c, dict) and c.get("minimax_keyframes") for c in conds or []):
+            swapped.append((name, conds))
+            new = []
+            for c in conds:
+                if isinstance(c, dict) and c.get("minimax_keyframes"):
+                    c = dict(c)
+                    kept = window_keyframes(c.pop("minimax_keyframes"), start, end, total, audio_span)
+                    if kept:
+                        c["minimax_keyframes"] = kept
+                new.append(c)
+            guider.original_conds[name] = new
+    try:
+        yield
+    finally:
+        for name, conds in swapped:
+            guider.original_conds[name] = conds
+
+
 def _slice_rest(rest, a0, a1, ref_len, dim=-1):
     """Slice the audio side of an AV latent along its time axis `dim`.
 
@@ -562,7 +600,8 @@ class MpiWindowedSampler:
             # would re-stream the whole DiT over PCIe once per window, which costs
             # far more than the sampling it protects. The sampler's own tqdm is off:
             # `pbar` above is the one bar.
-            with _window_positions(guider, start):
+            with _window_positions(guider, start), \
+                    _window_keyframes(guider, start, end, total, (a0, a1)):
                 result = guider.sample(
                     seg_noise, seg_latent["samples"], sampler, sigmas,
                     denoise_mask=seg_latent.get("noise_mask", None),
@@ -865,7 +904,8 @@ class MpiStepWindowedSampler(MpiWindowedSampler):
                     return comfy.utils.pack_latents(parts)[0] if len(parts) > 1 else parts[0]
                 seg_start = None if state is None else window_of(state)
                 started = _StartedSampler(sampler, seg_start, window_of(step_noise))
-                with _window_positions(guiders[index], start):
+                with _window_positions(guiders[index], start), \
+                        _window_keyframes(guiders[index], start, end, total, (a0, a1)):
                     result = guiders[index].sample(seg_noise, seg_samples, started, sigmas[step:step + 2],
                                                    denoise_mask=seg_mask, callback=None,
                                                    disable_pbar=True, seed=noise.seed)
