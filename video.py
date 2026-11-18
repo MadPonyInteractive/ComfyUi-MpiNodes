@@ -67,6 +67,12 @@ def _audio_has_samples(audio):
         return False
 
 
+# AAC rate for an audio track that has to be encoded from a waveform. ffmpeg's default (~128k)
+# audibly degraded a clip after a few saves in a row (extend chain -> upscale, MPI-1603); a copy
+# needs no rate at all, so this applies only where the sound really is re-encoded.
+AUDIO_BITRATE = "320k"
+
+
 def _write_wav(waveform, sample_rate, path):
     """Write a ComfyUI AUDIO waveform tensor [B, C, samples] to a WAV file.
 
@@ -566,7 +572,7 @@ class MpiSaveVideo:
             if use_audio and _audio_has_samples(audio):
                 wav_path = tempfile.mktemp(suffix=".wav")
                 _write_wav(audio["waveform"], audio["sample_rate"], wav_path)
-                cmd += ["-i", wav_path, "-map", "0:v", "-map", "1:a", "-c:a", "aac"]
+                cmd += ["-i", wav_path, "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", AUDIO_BITRATE]
                 if truncate_to_audio:
                     # Bare -shortest: end at whichever stream ends first. Short
                     # audio trims the video down to the audio length.

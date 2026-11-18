@@ -4,8 +4,8 @@ A ComfyUI IMAGE is one tensor holding the whole clip, so Load Video -> <op> -> S
 every frame in RAM, several times over once an op makes it bigger (RIFE x2 asked a user's PC for
 72 GB, a 4x model upscale for 99 GB). The streaming nodes do the decode and the encode themselves
 through this class: ffmpeg decodes rgb24 frames to a pipe, the node reads a chunk, works on it,
-and writes the result to the encoder's pipe. The source's audio is muxed back at the end, cut or
-padded to the new video's length the way MpiSaveVideo does it.
+and writes the result to the encoder's pipe. The source's audio is copied back at the end, cut to
+the new video's length (MPI-1603: never re-encoded, so a chain of video ops costs the sound nothing).
 
     with VideoStream("MpiRifeVideo", path, out_w, out_h, out_fps, filename_prefix) as vs:
         while (chunk := vs.read(n)) is not None:
@@ -24,7 +24,7 @@ import numpy as np
 import torch
 
 from .help_funcs import find_ffmpeg, video_has_audio_stream
-from .video import _decode_cmd, _probe_video_meta
+from .video import AUDIO_BITRATE, _decode_cmd, _probe_video_meta
 
 
 def _drain(stream, sink):
@@ -36,6 +36,15 @@ def _drain(stream, sink):
 
 def _tail(chunks):
     return (chunks[0] if chunks else b"").decode("utf-8", "replace")[-2000:]
+
+
+def _audio_codec(ffmpeg, path):
+    """Codec name of the first audio stream ("aac", "opus", ...), read off `ffmpeg -i`'s stream dump."""
+    err = subprocess.run([ffmpeg, "-hide_banner", "-i", path], capture_output=True).stderr.decode("utf-8", "replace")
+    for line in err.splitlines():
+        if "Audio:" in line:
+            return line.split("Audio:", 1)[1].split()[0].strip(",")
+    return None
 
 
 def probe(tag, path):
@@ -112,11 +121,16 @@ class VideoStream:
             raise RuntimeError(f"[{self.tag}] ffmpeg encode failed:\n{_tail(self.enc_err)}")
         if self.has_audio:
             duration = self.written / self.out_fps
-            mux = subprocess.run([
-                self.ffmpeg, "-y", "-i", self.video_path, "-i", self.path, "-map", "0:v", "-map", "1:a:0",
-                "-c:v", "copy", "-c:a", "aac", "-af", "apad", "-t", f"{duration:.6f}",
-                "-movflags", "+faststart", self.out_path,
-            ], capture_output=True)
+            head = [self.ffmpeg, "-y", "-i", self.video_path, "-i", self.path, "-map", "0:v", "-map", "1:a:0", "-c:v", "copy"]
+            tail = ["-t", f"{duration:.6f}", "-movflags", "+faststart", self.out_path]
+            # An AAC track is untouched, so its packets are COPIED: every lossy re-encode stacks another
+            # generation of loss on the clip (extend -> interpolate -> upscale was audible, MPI-1603).
+            # A copied track is only cut, never padded. Any other codec is encoded once: ffmpeg will
+            # put e.g. Vorbis into an mp4 without complaint, and the app's player cannot play it.
+            if _audio_codec(self.ffmpeg, self.path) == "aac":
+                mux = subprocess.run(head + ["-c:a", "copy"] + tail, capture_output=True)
+            else:
+                mux = subprocess.run(head + ["-c:a", "aac", "-b:a", AUDIO_BITRATE, "-af", "apad"] + tail, capture_output=True)
             if mux.returncode != 0:
                 raise RuntimeError(f"[{self.tag}] ffmpeg audio mux failed:\n{mux.stderr.decode('utf-8', 'replace')[-2000:]}")
         return {
