@@ -286,6 +286,15 @@ Depth for a 360 panorama and for fills painted into it, with **MoGe v1** (MIT, M
 | **MpiWrapSoften** | Soften the hard line where a pano's edges meet, in flat areas only (`threshold`), so a seam pass joins it instead of leaving a light ridge. |
 | **MpiWrapCutMerge** | Undo Mpi Wrap Pad on a refined image by joining the two renders of the wrap strip along a min-cost cut, not a cross-fade, so no line shows twice. |
 
+### Depth
+
+Grey depth, near = white, with **Video Depth Anything** (Apache-2.0, ByteDance) vendored in `depth3d/vda/` (licence beside it). Use the **Small** checkpoint (`video_depth_anything_vits.pth`, Apache-2.0; Base and Large are CC-BY-NC-4.0) in `models/depth/`, placed there by you (the pack never downloads).
+
+| Node | Description |
+|---|---|
+| **MpiDepthImage** | A depth map of each picture at its own size, scaled to its own nearest and farthest point. |
+| **MpiDepthVideo** | A depth video of a video file: same size, frame count and fps, AAC audio copied untouched. Video Depth Anything's own 32-frame windows (so it does not flicker), streamed: RAM stays at two windows of frames on any clip length, the raw depth spills to a temp file and is greyed with the whole clip's range. Takes the file by `string` or picker; outputs the mp4 path. |
+
 ### Panorama, Stems, Frame Interpolation
 
 Ported with unchanged behaviour so Cubric Studio can drop three single-use packs (MIT; each licence sits beside its port).
