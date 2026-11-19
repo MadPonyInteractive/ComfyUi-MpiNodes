@@ -96,11 +96,12 @@ class _TinyVaePreviewer:
     decoder cannot produce frame N without the frames before it.
     """
 
-    def __init__(self, vae, rate: float, latent_shapes=None, num_keyframes=0):
+    def __init__(self, vae, rate: float, latent_shapes=None, num_keyframes=0, skip_leading=0):
         self.vae = vae
         self.rate = max(1.0, float(rate))
         self.latent_shapes = latent_shapes
         self.num_keyframes = num_keyframes
+        self.skip_leading = max(0, int(skip_leading or 0))
         self.first = True
 
     def push(self, x0):
@@ -132,6 +133,14 @@ class _TinyVaePreviewer:
         # never had any, which is why this node did not need it until LTX.
         if 0 < self.num_keyframes < x0.shape[2]:
             x0 = x0[:, :, :-self.num_keyframes]
+
+        # Leading latents that are conditioning, not clip: WanAnimate2ToVideo puts the
+        # REFERENCE picture in as latent frame 0 (its `trim_latent` output, cut before the
+        # real decode). Decoded with the clip it plays as a still at each loop start AND
+        # shifts the TAEHV's 1+4+4.. frame grouping by one, smearing every frame after it
+        # (taew2_1, measured: 26.9 dB at best vs 31.4 dB with it dropped). Cut it first.
+        if 0 < self.skip_leading < x0.shape[2]:
+            x0 = x0[:, :, self.skip_leading:]
 
         # ponytail: whole clip, every step. 6-step H3 makes that ~6 tiny-VAE
         # decodes a run; a long sampler on a long clip would want a wall-clock
@@ -208,14 +217,15 @@ def _count_keyframes(executor):
 
 
 class _PreviewWrapper:
-    def __init__(self, vae, rate):
+    def __init__(self, vae, rate, skip_leading=0):
         self.vae = vae
         self.rate = rate
+        self.skip_leading = skip_leading
 
     def __call__(self, executor, noise, latent_image, sampler, sigmas, denoise_mask,
                  callback, disable_pbar, seed, latent_shapes=None):
         previewer = _TinyVaePreviewer(self.vae, self.rate, latent_shapes,
-                                      _count_keyframes(executor))
+                                      _count_keyframes(executor), self.skip_leading)
         # Pin the tiny VAE to the sampling device: it is ~22MB and reloading it
         # per step costs more than the decode.
         try:
@@ -264,6 +274,15 @@ class MpiVideoSamplingPreview:
                                "playback, not cost.",
                 }),
             },
+            "optional": {
+                "skip_leading": ("INT", {
+                    "default": 0, "min": 0, "max": 64,
+                    "tooltip": "Latent frames at the START that are conditioning, not clip, "
+                               "dropped before decoding. WAN Animate 2 holds its reference "
+                               "picture there: wire WanAnimate2ToVideo's trim_latent here. "
+                               "0 = decode from the first latent frame (H3, LTX).",
+                }),
+            },
         }
 
     RETURN_TYPES = ("MODEL",)
@@ -279,12 +298,12 @@ class MpiVideoSamplingPreview:
     )
     FUNCTION = "doit"
 
-    def doit(self, model, vae, preview_rate):
+    def doit(self, model, vae, preview_rate, skip_leading=0):
         patched = model.clone()
         patched.add_wrapper_with_key(
             comfy.patcher_extension.WrappersMP.OUTER_SAMPLE,
             "mpi_video_sampling_preview",
-            _PreviewWrapper(vae, preview_rate),
+            _PreviewWrapper(vae, preview_rate, skip_leading),
         )
         return (patched,)
 
