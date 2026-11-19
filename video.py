@@ -520,6 +520,12 @@ class MpiSaveVideo:
                     },
                 ),
                 "audio": ("AUDIO",),
+                "alpha": (
+                    "MASK",
+                    {
+                        "tooltip": "Optional matte (white = keep). Connected = a transparent .webm (VP9 yuva420p) with this matte as soft alpha; RGB is zeroed only where alpha is 0, so alpha-blind players show black there, not the old background. One mask per frame, or one for all; scaled to the frame size. Unconnected = the usual .mp4.",
+                    },
+                ),
             },
         }
 
@@ -536,12 +542,14 @@ class MpiSaveVideo:
         "in, no if/else router). GPU-agnostic (no nvenc). Outputs the absolute "
         "path of the written mp4, so work can be ordered AFTER the file exists "
         "— hang an Mpi Clear Vram End off it and the VRAM clear stops costing "
-        "render time. The path also feeds Mpi Has Audio / Mpi Load Video."
+        "render time. The path also feeds Mpi Has Audio / Mpi Load Video. "
+        "Connect the optional alpha MASK for a transparent .webm (VP9 yuva420p) "
+        "instead, the matte as soft alpha."
     )
     FUNCTION = "doit"
 
     def doit(self, images, fps, filename_prefix="MpiVideo", use_audio=True,
-             truncate_to_audio=False, audio=None):
+             truncate_to_audio=False, audio=None, alpha=None):
         import torch  # type: ignore
 
         ffmpeg = find_ffmpeg()
@@ -552,18 +560,21 @@ class MpiSaveVideo:
             )
 
         h, w = images.shape[1], images.shape[2]
-        frames = images.clamp(0.0, 1.0).mul(255.0).round().to("cpu", torch.uint8).contiguous()
+        frames = images[..., :3].clamp(0.0, 1.0).mul(255.0).round().to("cpu", torch.uint8).contiguous()
+        if alpha is not None:
+            frames = _rgba_from_matte(frames, alpha, torch)
 
         out_dir = folder_paths.get_output_directory()
         full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(
             filename_prefix, out_dir, w, h
         )
-        name = f"{filename}_{counter:05}.mp4"
+        ext = "webm" if alpha is not None else "mp4"
+        name = f"{filename}_{counter:05}.{ext}"
         out_path = os.path.join(full_output_folder, name)
 
         cmd = [
             ffmpeg, "-y",
-            "-f", "rawvideo", "-pix_fmt", "rgb24",
+            "-f", "rawvideo", "-pix_fmt", "rgba" if alpha is not None else "rgb24",
             "-s", f"{w}x{h}", "-r", str(fps), "-i", "-",
         ]
 
@@ -572,7 +583,8 @@ class MpiSaveVideo:
             if use_audio and _audio_has_samples(audio):
                 wav_path = tempfile.mktemp(suffix=".wav")
                 _write_wav(audio["waveform"], audio["sample_rate"], wav_path)
-                cmd += ["-i", wav_path, "-map", "0:v", "-map", "1:a", "-c:a", "aac", "-b:a", AUDIO_BITRATE]
+                a_codec = ["-c:a", "libopus", "-b:a", "160k"] if alpha is not None else ["-c:a", "aac", "-b:a", AUDIO_BITRATE]
+                cmd += ["-i", wav_path, "-map", "0:v", "-map", "1:a", *a_codec]
                 if truncate_to_audio:
                     # Bare -shortest: end at whichever stream ends first. Short
                     # audio trims the video down to the audio length.
@@ -586,15 +598,26 @@ class MpiSaveVideo:
                     vid_dur = frames.shape[0] / float(fps) if fps else 0.0
                     cmd += ["-af", "apad", "-t", f"{vid_dur:.6f}"]
 
-            cmd += [
-                "-c:v", "libx264", "-pix_fmt", "yuv420p",
-                # libx264/yuv420p require even dimensions; crop off the odd
-                # last row/column so 2899x806 etc. don't fail to open the encoder.
-                "-vf", "crop=trunc(iw/2)*2:trunc(ih/2)*2",
-                "-preset", "fast", "-crf", "18",
-                "-movflags", "+faststart",
-                out_path,
-            ]
+            if alpha is not None:
+                # VP9 is the codec the app's player shows alpha from (Extract's WebM).
+                # 4:2:0 also needs even sides, same crop as the mp4 path.
+                cmd += [
+                    "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p",
+                    "-vf", "crop=trunc(iw/2)*2:trunc(ih/2)*2",
+                    "-crf", "20", "-b:v", "0", "-row-mt", "1",
+                    "-deadline", "good", "-cpu-used", "4",
+                    out_path,
+                ]
+            else:
+                cmd += [
+                    "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                    # libx264/yuv420p require even dimensions; crop off the odd
+                    # last row/column so 2899x806 etc. don't fail to open the encoder.
+                    "-vf", "crop=trunc(iw/2)*2:trunc(ih/2)*2",
+                    "-preset", "fast", "-crf", "18",
+                    "-movflags", "+faststart",
+                    out_path,
+                ]
 
             # Stream frames to stdin instead of buffering the whole raw video as
             # one bytes blob (.tobytes() doubled a multi-GB clip in RAM). Write
@@ -631,13 +654,36 @@ class MpiSaveVideo:
 
         return {
             "ui": {"videos": [
-                {"filename": name, "subfolder": subfolder, "type": "output", "format": "video/mp4"}
+                {"filename": name, "subfolder": subfolder, "type": "output", "format": f"video/{ext}"}
             ]},
             # Returned as well as shown, so a node can be ordered after the mp4
             # exists. OUTPUT_NODE keeps the preview; "result" is what makes the
             # path reachable downstream.
             "result": (out_path,),
         }
+
+
+def _rgba_from_matte(frames, alpha, torch):
+    """uint8 RGB frames (N,H,W,3) + a MASK (N|1,h,w) -> uint8 RGBA (N,H,W,4), the matte as soft alpha.
+
+    The matte is scaled to the frame size (bilinear). RGB is zeroed only where alpha
+    is 0: alpha-blind decoders (ffmpeg's native vp9, an H.264 proxy) then show black
+    there instead of the original background, while a soft edge keeps its real colour
+    and gets no dark fringe (the rule routes/videoExtract.js uses in Cubric Studio).
+    """
+    n, h, w = frames.shape[0], frames.shape[1], frames.shape[2]
+    m = alpha if alpha.dim() == 3 else alpha.reshape(-1, alpha.shape[-2], alpha.shape[-1])
+    if m.shape[0] not in (1, n):
+        raise ValueError(f"[MpiSaveVideo] alpha has {m.shape[0]} masks for {n} frames (need {n} or 1)")
+    m = m.to("cpu", torch.float32)
+    if m.shape[1] != h or m.shape[2] != w:
+        m = torch.nn.functional.interpolate(m.unsqueeze(1), size=(h, w), mode="bilinear",
+                                            align_corners=False).squeeze(1)
+    a = m.clamp(0.0, 1.0).mul(255.0).round().to(torch.uint8)
+    if a.shape[0] == 1 and n > 1:
+        a = a.expand(n, h, w)
+    rgb = frames * (a > 0).unsqueeze(-1).to(torch.uint8)
+    return torch.cat([rgb, a.unsqueeze(-1)], dim=-1).contiguous()
 
 
 def _frame_sample(frames, fps, rate, total, from_end):
