@@ -244,3 +244,4 @@
 - MpiSaveVideo - the sound is encoded at 320k, not ffmpeg's default 128k: after six saves in a row a test track measured 24.6 dB SNR against 15.7 dB before (Cubric Studio MPI-1603)
 - MpiDepthImage - added: a grey depth map of a picture (near = white) with Video Depth Anything Small, vendored in depth3d/ (Cubric Studio MPI-1605)
 - MpiDepthVideo - added: a grey depth video of a video file, same size, frames and fps, sound kept; Video Depth Anything's 32-frame windows streamed, so it does not flicker and RAM stays flat on any length (Cubric Studio MPI-1605)
+- MpiH3AddGuides - optional `times` (one second per filled picture) + `seconds` (the clip length) place each picture at its own time instead of evenly spaced; the length lands on the last frame; a wrong count, a time outside the clip or two keys on one frame raises (Cubric Studio MPI-1191)

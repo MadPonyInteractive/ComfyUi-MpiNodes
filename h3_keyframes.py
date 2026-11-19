@@ -2,7 +2,7 @@
 
 `MpiH3AddGuides` takes up to 8 picture slots, drops the empty ones, and anchors
 the rest in slot order: the first on frame 0, the last on the last frame, the
-others evenly between. Each anchor is built by core's own `MiniMaxH3AddGuide`, so
+others evenly between -- or, given `times`, each at its own second. Each anchor is built by core's own `MiniMaxH3AddGuide`, so
 the tensor maths moves with ComfyUI instead of drifting in a private copy.
 
 Why a node and not a chain of core nodes: a host app compiling a saved workflow
@@ -45,6 +45,39 @@ def even_frames(count, frame_count):
         raise ValueError(f"{count} keyframes need at least {count} frames; the clip has {frame_count}")
     last = frame_count - 1
     return [round(i * last / (count - 1)) for i in range(count)]
+
+
+def timed_frames(times, count, frame_count, seconds):
+    """Pixel frames for keys at the given times (seconds), or None when `times` is blank (even spacing).
+
+    `times` is one number per filled picture, in order, comma or space separated.
+    `seconds` is the clip's length as asked: time t lands on round(t / seconds * last
+    frame), so the length itself lands on the last frame even after H3 rounds the
+    frame count up to its grid. Anything that cannot land as written raises: a
+    count that does not match, a time below 0 or past the length, two keys on one
+    frame or out of order -- a silent fallback to even spacing would hide it.
+    """
+    parts = str(times or "").replace(",", " ").split()
+    if not parts:
+        return None
+    try:
+        values = [float(p) for p in parts]
+    except ValueError:
+        raise ValueError(f"keyframe times must be numbers in seconds, got '{times}'") from None
+    if len(values) != count:
+        raise ValueError(f"{len(values)} keyframe times for {count} pictures ('{times}')")
+    if not seconds or seconds <= 0:
+        raise ValueError("keyframe times need the clip length in seconds (`seconds`)")
+    last = frame_count - 1
+    frames = []
+    for t in values:
+        if t < 0 or t > seconds + 1e-6:
+            raise ValueError(f"keyframe time {t:g}s is outside the {seconds:g}s clip")
+        frame = round(t / seconds * last)
+        if frames and frame <= frames[-1]:
+            raise ValueError(f"keyframe times must rise by at least one frame each ('{times}' on {frame_count} frames)")
+        frames.append(frame)
+    return frames
 
 
 def latent_pixel_starts(steps):
@@ -130,6 +163,9 @@ class MpiH3AddGuides:
             "optional": {
                 f"image_{i}": ("IMAGE", {"tooltip": f"Keyframe {i}, in order. Empty (unconnected, or an Mpi loader's 1x1 empty picture) is skipped and the rest close up."})
                 for i in range(1, SLOTS + 1)
+            } | {
+                "times": ("STRING", {"default": "", "tooltip": "Optional: the second each filled picture lands on, in order, comma separated (e.g. '0, 1.5, 5'). One per filled picture. Blank = evenly spaced."}),
+                "seconds": ("FLOAT", {"default": 0.0, "min": 0.0, "max": 3600.0, "step": 0.01, "tooltip": "The clip length the times are in (wire the duration). That length lands on the last frame."}),
             },
         }
 
@@ -142,11 +178,13 @@ class MpiH3AddGuides:
         "slot order. Empty slots are skipped (an Mpi loader's 1x1 empty picture "
         "included), so one graph covers 1 to 8 keys. Each anchor is core "
         "MiniMaxH3AddGuide's. Use one node per sampling stage, each with that stage's "
-        "latent. `frames` reports the frame of each key, `count` how many were anchored."
+        "latent. `frames` reports the frame of each key, `count` how many were anchored. "
+        "Optional `times` (seconds, one per filled picture) + `seconds` (the clip length) "
+        "place each picture at its own time instead."
     )
     FUNCTION = "doit"
 
-    def doit(self, positive, vae, latent, **slots):
+    def doit(self, positive, vae, latent, times="", seconds=0.0, **slots):
         try:
             from comfy_extras.nodes_minimax_h3 import MiniMaxH3AddGuide  # type: ignore
         except ImportError as exc:
@@ -157,7 +195,9 @@ class MpiH3AddGuides:
         samples = latent["samples"]
         video = samples.unbind()[0] if getattr(samples, "is_nested", False) else samples
         frame_count = latent_frames(video.shape[2])
-        frames = even_frames(len(images), frame_count)
+        frames = timed_frames(times, len(images), frame_count, seconds)
+        if frames is None:
+            frames = even_frames(len(images), frame_count)
 
         for image, frame in zip(images, frames):
             positive = MiniMaxH3AddGuide.execute(

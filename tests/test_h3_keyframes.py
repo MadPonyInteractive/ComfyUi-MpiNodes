@@ -25,7 +25,7 @@ from comfy.nested_tensor import NestedTensor  # noqa: E402
 import sampler  # noqa: E402
 from h3 import latent_frames  # noqa: E402
 from h3_keyframes import (MpiH3AddGuides, even_frames, latent_pixel_starts,  # noqa: E402
-                          window_keyframes)
+                          timed_frames, window_keyframes)
 
 sampler.comfy.sample.fix_empty_latent_channels = lambda patcher, samples, *a: samples
 sampler.latent_preview.prepare_callback = lambda *a: (lambda *b: None)
@@ -102,6 +102,42 @@ def test_node_keeps_keyframes_already_on_the_positive():
     out, _, count = MpiH3AddGuides().doit(positive, FakeVae(), av(37), image_1=pic(0.5), image_2=pic(0.5))
     assert count == 2
     assert [k["resolved_frame_index"] for k in out[0][1]["minimax_keyframes"]] == [0, 0, 123]
+
+
+def raises(fn, words):
+    try:
+        fn()
+    except ValueError as exc:
+        assert words in str(exc), str(exc)
+    else:
+        raise AssertionError(f"expected a ValueError naming '{words}'")
+
+
+def test_timed_frames():
+    assert timed_frames("", 3, 124, 5) is None and timed_frames(None, 3, 124, 5) is None
+    assert timed_frames("0, 1, 5", 3, 124, 5) == [0, 25, 123]       # 1 s of 5 -> 24.6 -> 25
+    assert timed_frames("0 2.5 5", 3, 124, 5) == [0, 62, 123]       # = even spacing
+    assert timed_frames("0.5, 4", 2, 124, 5) == [12, 98]            # need not start on 0 or end on the length
+    raises(lambda: timed_frames("0, 5", 3, 124, 5), "2 keyframe times for 3 pictures")
+    raises(lambda: timed_frames("0, 6", 2, 124, 5), "outside the 5s clip")
+    raises(lambda: timed_frames("-1, 5", 2, 124, 5), "outside")
+    raises(lambda: timed_frames("0, 3, 2", 3, 124, 5), "rise")
+    raises(lambda: timed_frames("0, 0.01", 2, 124, 5), "rise")      # both round to frame 0
+    raises(lambda: timed_frames("0, 5", 2, 124, 0), "clip length")
+    raises(lambda: timed_frames("0, two", 2, 124, 5), "numbers")
+
+
+def test_node_places_pictures_at_their_times():
+    blank = torch.zeros(1, 1, 1, 3)
+    positive, frames, count = run_node(image_1=pic(0.1), image_2=blank, image_3=pic(0.3), image_4=pic(0.4),
+                                       times="0, 1, 5", seconds=5.0)
+    assert (frames, count) == ("0, 25, 123", 3)          # times count the FILLED pictures, blanks skipped
+    keys = positive[0][1]["minimax_keyframes"]
+    assert [round(float(k["latent"].mean()), 2) for k in keys] == [0.1, 0.3, 0.4]
+    # blank times = even spacing, the node's default
+    _, frames, _ = run_node(image_1=pic(0.1), image_2=pic(0.2), image_3=pic(0.3), times=" ", seconds=5.0)
+    assert frames == "0, 62, 123"
+    raises(lambda: run_node(image_1=pic(0.1), image_2=pic(0.2), times="0, 1, 5", seconds=5.0), "3 keyframe times")
 
 
 # --- one window ----------------------------------------------------------------------------------
