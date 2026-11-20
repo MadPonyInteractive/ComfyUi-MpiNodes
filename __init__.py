@@ -117,7 +117,7 @@ from .ph3 import MpiPH3ImageConditioning, MpiPH3Sigmas, MpiPH3UpsamplerImages
 from .vram import MpiClearVram, MpiClearVramEnd
 from .sampler import MpiStepWindowedSampler, MpiWindowedSampler
 from .video import MpiAudioRange, MpiAudioSplice, MpiHasAudio, MpiSaveVideo, MpiLoadVideo, MpiLoadAudio, MpiLoadVideoUpload, MpiLoadAudioUpload
-from .latent import MpiSaveLatent, MpiLoadLatent, MpiStageLatents, MpiLatentUpscale
+from .latent import MpiSaveLatent, MpiLoadLatent, MpiStageLatents, MpiLatentUpscale, MpiH3WindowJoin
 from .preview import MpiVideoSamplingPreview, MpiTinyVaeLoader
 from .splat import MpiBrushTrain
 from .scene import MpiPanoDepth, MpiLiftDepth, MpiWrapPad, MpiWrapCrop, MpiWrapSoften, MpiWrapCutMerge
@@ -312,6 +312,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiLoadLatent": MpiLoadLatent,
     "MpiStageLatents": MpiStageLatents,
     "MpiLatentUpscale": MpiLatentUpscale,
+    "MpiH3WindowJoin": MpiH3WindowJoin,
     "MpiVideoSamplingPreview": MpiVideoSamplingPreview,
     "MpiTinyVaeLoader": MpiTinyVaeLoader,
     "MpiBrushTrain": MpiBrushTrain,
@@ -464,6 +465,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiLoadLatent": "Mpi Load Latent",
     "MpiStageLatents": "Mpi Stage Latents",
     "MpiLatentUpscale": "Mpi Latent Upscale",
+    "MpiH3WindowJoin": "Mpi H3 Window Join",
     "MpiVideoSamplingPreview": "Mpi Video Sampling Preview",
     "MpiTinyVaeLoader": "Mpi Tiny Vae Loader",
     "MpiBrushTrain": "Mpi Brush Train",

@@ -424,3 +424,67 @@ class MpiLatentUpscale:
         s = samples.copy()
         s["samples"] = out
         return (s,)
+
+
+class MpiH3WindowJoin:
+    """Join a windowed MiniMax H3 run in LATENT space, before its one decode (Cubric Studio MPI-1608 Phase 3).
+
+    The last window of a windowed run (Video Edit) wires its own latent in and names the earlier windows' saved
+    latents in `windows`; the output is the whole film as one AV latent, so the graph's own refine, decode and
+    save make the film in one go. `windows` empty = a pass-through, so every other window (and a clip that fits
+    one window) runs exactly as before.
+    """
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "latent": ("LATENT", {"tooltip": "This window's AV latent (the last window of the run)."}),
+                "windows": (
+                    "STRING",
+                    {
+                        "default": "",
+                        "multiline": True,
+                        "tooltip": "The EARLIER windows' saved latents, oldest first, comma or newline separated - the names Mpi Save Latent wrote them under (looked up in input/ first, then <output>/latents/). Empty = pass this window through untouched.",
+                    },
+                ),
+                "context_frames": (
+                    "INT",
+                    {"default": 39, "min": 39, "max": 1000, "step": 51,
+                     "tooltip": "The head each window held from the one before (Mpi H3 Masked Prefix's context_frames). Every head is checked against the tail it copied: a window from another run raises instead of joining with a jump."},
+                ),
+                "lead_frames": (
+                    "INT",
+                    {"default": 0, "min": 0, "max": 1000,
+                     "tooltip": "Frames at the start of the FIRST window that are not part of the film (a lead-in), dropped. Must end on a latent step (17 = 5 steps). Ignored when `windows` is empty."},
+                ),
+            },
+        }
+
+    RETURN_TYPES = ("LATENT", "INT", "STRING")
+    RETURN_NAMES = ("latent", "added_frames", "report")
+    CATEGORY = "MpiNodes/Latent"
+    DESCRIPTION = "Join the windows of a windowed MiniMax H3 run in latent space: the earlier windows (by saved name) + this one, each later window's held head checked and dropped, so ONE decode makes the whole film with no pixel seams. added_frames = the frames placed in front of this window (add it to the frame count a trim keeps). Empty `windows` passes the latent through."
+    FUNCTION = "doit"
+
+    def doit(self, latent, windows: str, context_frames: int, lead_frames: int = 0):
+        names = [n.strip() for n in windows.replace("\n", ",").split(",") if n.strip()]
+        if not names:
+            return (latent, 0, "one window: passed through")
+        from comfy.nested_tensor import NestedTensor  # type: ignore
+        from .h3 import _unpack_av, latent_frames
+        from .h3_window_join import join_windows
+
+        pieces = []
+        for name in names:
+            path = _latent_path(name, search_input=True)
+            if path is None or not os.path.isfile(path):
+                raise FileNotFoundError(
+                    "Mpi H3 Window Join: no saved window latent {!r} (looked for {})".format(name, path))
+            pieces.append(_unpack_av(_load_latent_file(path), name))
+        current = _unpack_av(latent, "latent")
+        pieces.append(current)
+        v, a, report = join_windows(pieces, context_frames, lead_frames)
+        added = latent_frames(v.shape[2]) - latent_frames(current[0].shape[2])
+        print("[MpiH3WindowJoin]", report.replace("\n", " | "))
+        return ({"samples": NestedTensor([v, a])}, added, report)
