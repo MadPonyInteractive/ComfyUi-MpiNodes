@@ -493,13 +493,17 @@ def frame_spans(steps: int):
     return out
 
 
-def plan_context(total_steps: int, wanted_frames: int):
+def plan_context(total_steps: int, wanted_frames: int, video_grid_only: bool = False):
     """Pick the tail of a clip that is a valid context length.
 
     Returns `(steps, frames, audio_steps)`, or `(0, 0, 0)` when the clip is too
     short. Walks the step count DOWN and measures each candidate's true span, so
     it stays right for a source clip whose own length is off the grid -- which is
     any clip that came in through a video loader rather than a prior sample.
+
+    `video_grid_only` (research, MPI-1635) also takes the 17k+5 lengths below and
+    between the valid ones (5, 22, 56 ...): on the video grid, OFF the 40 Hz audio
+    clock, so the audio prefix is rounded to the nearest step (<= 12.5 ms off).
     """
     for steps in range(min(total_steps, max(1, wanted_frames)), 0, -1):
         frames = tail_span(total_steps, steps)
@@ -507,6 +511,8 @@ def plan_context(total_steps: int, wanted_frames: int):
             continue
         if is_valid_context(frames):
             return steps, frames, frames * AUDIO_LATENT_FPS // FPS_I
+        if video_grid_only and frames >= 5 and (frames - 5) % 17 == 0:
+            return steps, frames, round(frames * AUDIO_LATENT_FPS / FPS_I)
     return 0, 0, 0
 
 
@@ -772,10 +778,10 @@ class MpiH3MaskedPrefix:
                     "INT",
                     {
                         "default": 39,
-                        "min": 39,
+                        "min": 5,
                         "max": 1000,
-                        "step": 51,
-                        "tooltip": "How much of the prior clip to keep, in frames at 24 fps. Snapped DOWN to 39 / 90 / 141 / 192 ... - the only lengths that land on the video grid AND on a whole audio step. 39 frames is 1.625 s.",
+                        "step": 17,
+                        "tooltip": "How much of the prior clip to keep, in frames at 24 fps. Snapped DOWN to 39 / 90 / 141 / 192 ... - the only lengths that land on the video grid AND on a whole audio step. 39 frames is 1.625 s. Below 39 only with video_grid_only.",
                     },
                 ),
             },
@@ -791,6 +797,7 @@ class MpiH3MaskedPrefix:
                         "tooltip": "How much of the next clip's opening to keep, in frames. Snapped DOWN like context_frames. Ignored without tail_latent.",
                     },
                 ),
+                "video_grid_only": ("BOOLEAN", {"default": False, "tooltip": "Research: keep context_frames on the VIDEO grid only (5, 22, 39, 56 ... frames), not snapped to the lengths that also land on a whole audio step. The audio prefix is rounded to the nearest step. Off = the snap above."}),
                 "audio_vae": ("VAE", {"tooltip": "The H3 audio VAE. Needed only with hold_audio."}),
                 "hold_audio": ("AUDIO", {"tooltip": "A SILENT stretch: written over the whole generated span's SOUNDTRACK (looped to fit) and masked out of sampling, so only the picture is generated there. A guide only suggests silence and H3 still talks over it on some seeds; a held soundtrack cannot. Use it for a span where nobody speaks. Needs audio_vae."}),
             },
@@ -817,7 +824,7 @@ class MpiH3MaskedPrefix:
     )
     FUNCTION = "doit"
 
-    def doit(self, latent, context_latent, context_frames, tail_latent=None, tail_frames=39, audio_vae=None, hold_audio=None):
+    def doit(self, latent, context_latent, context_frames, tail_latent=None, tail_frames=39, audio_vae=None, hold_audio=None, video_grid_only=False):
         # Imported here, not at module scope, so the pack still loads on a
         # ComfyUI without H3 -- same reason as MpiH3References.
         import torch
@@ -835,8 +842,8 @@ class MpiH3MaskedPrefix:
                 f"{target_v.shape[4] * 16}x{target_v.shape[3] * 16}."
             )
 
-        wanted = snap_context_frames(context_frames)
-        steps, frames, audio_steps = plan_context(ctx_v.shape[2], wanted)
+        wanted = context_frames if video_grid_only else snap_context_frames(context_frames)
+        steps, frames, audio_steps = plan_context(ctx_v.shape[2], wanted, video_grid_only)
         if steps == 0:
             aligned = ctx_v.shape[2] % 5 == 2
             raise ValueError(
@@ -899,6 +906,8 @@ class MpiH3MaskedPrefix:
             f"context {frames} frames ({steps} latent steps, {audio_steps} audio steps)"
             f" + {new_frames} new; asked for {context_frames}"
         )
+        if not is_valid_context(frames):
+            report += "; OFF the audio clock (video_grid_only)"
         if t_steps:
             report += (f"; tail {t_frames} frames ({t_steps} latent steps, {t_audio} audio steps),"
                        f" asked for {tail_frames}")
