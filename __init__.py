@@ -110,7 +110,7 @@ from .wan import MpiWanFrames, MpiWanSeconds
 from .wan_masked import MpiWanMaskedVideo
 from .speech import MpiSpeechToText
 from .h3 import MpiH3DecodeAV, MpiH3EncodeAV, MpiH3ImageToVideo, MpiH3Length, MpiH3MaskedPrefix, MpiH3PinFirstFrame, MpiH3References
-from .h3_keyframes import MpiH3AddGuides
+from .h3_keyframes import MpiH3AddGuides, MpiH3LevelGuide
 from .bernini import MpiBerniniConditioning, MpiBerniniLength
 from .flux3 import MpiFlux3References
 from .ph3 import MpiPH3ImageConditioning, MpiPH3Sigmas, MpiPH3UpsamplerImages
@@ -283,6 +283,7 @@ NODE_CLASS_MAPPINGS = {
     "MpiWanMaskedVideo": MpiWanMaskedVideo,
     "MpiSpeechToText": MpiSpeechToText,
     "MpiH3AddGuides": MpiH3AddGuides,
+    "MpiH3LevelGuide": MpiH3LevelGuide,
     "MpiH3DecodeAV": MpiH3DecodeAV,
     "MpiH3EncodeAV": MpiH3EncodeAV,
     "MpiH3ImageToVideo": MpiH3ImageToVideo,
@@ -436,6 +437,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "MpiWanMaskedVideo": "Mpi Wan Masked Video",
     "MpiSpeechToText": "Mpi Speech To Text",
     "MpiH3AddGuides": "Mpi H3 Add Guides",
+    "MpiH3LevelGuide": "Mpi H3 Level Guide",
     "MpiH3DecodeAV": "Mpi H3 Decode AV",
     "MpiH3EncodeAV": "Mpi H3 Encode AV",
     "MpiH3ImageToVideo": "Mpi H3 Image To Video",

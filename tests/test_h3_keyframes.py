@@ -24,7 +24,7 @@ from comfy.nested_tensor import NestedTensor  # noqa: E402
 
 import sampler  # noqa: E402
 from h3 import latent_frames  # noqa: E402
-from h3_keyframes import (MpiH3AddGuides, even_frames, latent_pixel_starts,  # noqa: E402
+from h3_keyframes import (MpiH3AddGuides, MpiH3LevelGuide, even_frames, latent_pixel_starts, level_guide,  # noqa: E402
                           timed_frames, window_keyframes)
 
 sampler.comfy.sample.fix_empty_latent_channels = lambda patcher, samples, *a: samples
@@ -39,9 +39,16 @@ def av(steps, audio=None):
 
 
 class FakeVae:
-    """VAE.encode for a [B, H, W, C] picture: one latent step whose value is the picture's mean."""
+    """VAE.encode for a [B, H, W, C] picture: one latent step whose value is the picture's mean.
+    decode gives that value back `dark` lower, as the real H3 VAE does (~0.01 = -2.5 levels)."""
+    def __init__(self, dark=0.0):
+        self.dark = dark
+
     def encode(self, pixels):
         return torch.full((1, 24, 1, 2, 3), float(pixels.mean()))
+
+    def decode(self, latent):
+        return torch.full((1, 1, 4, 4, 3), float(latent.mean()) - self.dark)
 
 
 def pic(value, size=32):
@@ -102,6 +109,33 @@ def test_node_keeps_keyframes_already_on_the_positive():
     out, _, count = MpiH3AddGuides().doit(positive, FakeVae(), av(37), image_1=pic(0.5), image_2=pic(0.5))
     assert count == 2
     assert [k["resolved_frame_index"] for k in out[0][1]["minimax_keyframes"]] == [0, 0, 123]
+
+
+def test_level_guide_adds_back_the_round_trip_loss():
+    out, offset = level_guide(FakeVae(dark=0.01), pic(0.5))
+    assert torch.allclose(out, torch.full_like(out, 0.51)), float(out.mean())
+    assert torch.allclose(offset, torch.full((3,), 0.01))
+    out, _ = level_guide(FakeVae(dark=0.01), pic(1.0))   # a white picture cannot go past white
+    assert float(out.max()) == 1.0
+
+
+def test_level_guide_drops_alpha():
+    out, _ = level_guide(FakeVae(), torch.full((1, 8, 8, 4), 0.5))
+    assert out.shape[-1] == 3
+
+
+def test_node_anchors_the_levelled_picture():
+    positive = [[torch.zeros(1, 4, 8), {}]]
+    out, _, _ = MpiH3AddGuides().doit(positive, FakeVae(dark=0.01), av(37), image_1=pic(0.4))
+    # 0.41 encoded, give or take one 8-bit level: core's lanczos fit rounds through uint8
+    got = float(out[0][1]["minimax_keyframes"][0]["latent"].mean())
+    assert abs(got - 0.41) <= 1 / 255, got
+
+
+def test_level_node_reports_its_offset():
+    image, report = MpiH3LevelGuide().doit(pic(0.5), FakeVae(dark=0.01))
+    assert round(float(image.mean()), 3) == 0.51
+    assert report == "RGB +2.55 +2.55 +2.55", report
 
 
 def raises(fn, words):

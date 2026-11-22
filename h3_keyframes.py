@@ -151,6 +151,52 @@ def window_keyframes(keyframes, start, end, total, audio_span=None):
     return out
 
 
+def level_guide(vae, image):
+    """Brighten an H3 guide by what the H3 video VAE's round trip takes off it, per channel.
+
+    H3 reads a guide as its VAE latent and frame 0 comes back through the decoder, so every
+    picture-to-video clip lands darker than its picture: measured ~-2.3 levels (0-255) on a
+    real window's frame 0, the same with the fp16 VAE as with the int8 one, a flat offset
+    across shadows and highlights (gain 1.00). A chain of windows, each guided by the last
+    window's frame, darkened ~2 more per window. Adding back the mean of image - D(E(image))
+    lands frame 0 within ~0.4 of the guide. DC only: no detail, no colour shape is touched.
+    Costs one encode + decode of the guide itself (Cubric Studio MPI-1597).
+    """
+    import torch
+
+    rgb = image[..., :3]
+    back = vae.decode(vae.encode(rgb))
+    back = back.reshape(-1, *back.shape[-3:])[:rgb.shape[0]].to(rgb)
+    offset = rgb.mean(dim=(0, 1, 2)) - back.mean(dim=(0, 1, 2))
+    return torch.clamp(rgb + offset, 0.0, 1.0), offset
+
+
+class MpiH3LevelGuide:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {"required": {
+            "image": ("IMAGE", {"tooltip": "The picture or clip about to become an H3 guide (MiniMaxH3AddGuide's image), already at the clip's size."}),
+            "vae": ("VAE", {"tooltip": "The H3 video VAE the guide is encoded with."}),
+        }}
+
+    RETURN_TYPES = ("IMAGE", "STRING")
+    RETURN_NAMES = ("image", "offset")
+    CATEGORY = "MpiNodes/H3"
+    DESCRIPTION = (
+        "Brighten a MiniMax H3 guide by exactly what the H3 video VAE's round trip takes off it "
+        "(per channel, DC only), so the clip comes out at the guide's brightness instead of ~2-3 "
+        "levels darker - and a chain of windows does not darken once per window. Put it between "
+        "the picture and core MiniMaxH3AddGuide's image. MpiH3AddGuides already does this inside."
+    )
+    FUNCTION = "doit"
+
+    def doit(self, image, vae):
+        out, offset = level_guide(vae, image)
+        report = "RGB " + " ".join(f"{v * 255:+.2f}" for v in offset.tolist())
+        print(f"[MpiH3LevelGuide] {report}")
+        return (out, report)
+
+
 class MpiH3AddGuides:
     @classmethod
     def INPUT_TYPES(cls):
@@ -199,9 +245,18 @@ class MpiH3AddGuides:
         if frames is None:
             frames = even_frames(len(images), frame_count)
 
+        import comfy.utils  # type: ignore
+
+        height, width = video.shape[3] * 16, video.shape[4] * 16
         for image, frame in zip(images, frames):
+            # core's own fit (lanczos, centre crop), so the level is measured on the pixels it encodes
+            fitted = comfy.utils.common_upscale(
+                image[:1, ..., :3].movedim(-1, 1), width, height, "lanczos", "center").movedim(1, -1)
+            fitted, offset = level_guide(vae, fitted)
+            print(f"[MpiH3AddGuides] frame {frame} levelled RGB "
+                  + " ".join(f"{v * 255:+.2f}" for v in offset.tolist()))
             positive = MiniMaxH3AddGuide.execute(
-                positive=positive, latent=latent, frame_idx=frame, vae=vae, image=image[:1]).result[0]
+                positive=positive, latent=latent, frame_idx=frame, vae=vae, image=fitted).result[0]
 
         report = ", ".join(str(f) for f in frames) if frames else "none"
         print(f"[MpiH3AddGuides] {len(frames)} keys of {frame_count} frames at {report}")
