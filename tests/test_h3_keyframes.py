@@ -25,7 +25,7 @@ from comfy.nested_tensor import NestedTensor  # noqa: E402
 import sampler  # noqa: E402
 from h3 import latent_frames  # noqa: E402
 from h3_keyframes import (MpiH3AddGuides, MpiH3LevelGuide, even_frames, latent_pixel_starts, level_guide,  # noqa: E402
-                          timed_frames, window_keyframes)
+                          level_reference, timed_frames, window_keyframes)
 
 sampler.comfy.sample.fix_empty_latent_channels = lambda patcher, samples, *a: samples
 sampler.latent_preview.prepare_callback = lambda *a: (lambda *b: None)
@@ -136,6 +136,47 @@ def test_level_node_reports_its_offset():
     image, report = MpiH3LevelGuide().doit(pic(0.5), FakeVae(dark=0.01))
     assert round(float(image.mean()), 3) == 0.51
     assert report == "RGB +2.55 +2.55 +2.55", report
+
+
+def test_level_reference_measures_small_and_returns_full_size():
+    seen = []
+
+    class Vae(FakeVae):
+        def encode(self, pixels):
+            seen.append(tuple(pixels.shape))
+            return super().encode(pixels)
+
+    big = torch.full((1, 3000, 2000, 4), 0.5)            # a full-size photo, alpha too
+    out, offset = level_reference(Vae(dark=0.01), big, 704, 1216)
+    assert out.shape == (1, 3000, 2000, 3)               # its own size, RGB
+    assert torch.allclose(out, torch.full_like(out, 0.51)) and torch.allclose(offset, torch.full((3,), 0.01))
+    h, w = seen[0][1:3]
+    assert h % 32 == 0 and w % 32 == 0 and h * w <= 704 * 1216 * 1.1, seen   # measured at ~the output's area
+    out, _ = level_reference(Vae(), pic(0.5, 64), 704, 1216)
+    assert seen[-1][1:3] == (64, 64)                     # a small picture is never upscaled to measure
+
+
+def test_references_node_levels_every_picture_and_no_video():
+    import comfy_extras.nodes_minimax_h3 as core
+    from h3 import MpiH3References
+    got = {}
+
+    def execute(**kw):
+        got.update(kw)
+        return types.SimpleNamespace(result=("cond", "latent"))
+
+    real = core.MiniMaxH3ReferenceToVideo.execute
+    core.MiniMaxH3ReferenceToVideo.execute = execute
+    try:
+        clip = torch.full((5, 32, 32, 3), 0.3)
+        MpiH3References().doit(None, FakeVae(dark=0.01), None, "<Picture 3> talks", 704, 1216, 124,
+                               ref_image_1=torch.zeros(1, 1, 1, 3), ref_image_3=pic(0.5), ref_video_1=clip)
+    finally:
+        core.MiniMaxH3ReferenceToVideo.execute = real
+    assert list(got["ref_images"]) == ["ref_image_0"]    # the empty slot dropped, the rest levelled
+    assert round(float(got["ref_images"]["ref_image_0"].mean()), 3) == 0.51
+    assert got["ref_videos"]["ref_video_0"] is clip      # a reference video is not touched
+    assert got["prompt"] == "<Picture 1> talks"
 
 
 def raises(fn, words):

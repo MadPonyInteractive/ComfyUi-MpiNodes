@@ -321,6 +321,16 @@ class MpiH3References:
         refs = collect_refs(kwargs)
         ref_images, ref_videos, ref_video_audios, ref_audios = refs["packed"]
         image_slots, video_slots, audio_slots = refs["slots"]
+        # H3 copies a picture's grade too, and the VAE round trip takes ~2-3 levels off it:
+        # level each picture first (h3_keyframes.level_reference, MPI-1597). Videos untouched.
+        try:
+            from .h3_keyframes import level_reference
+        except ImportError:  # run outside the package (tests)
+            from h3_keyframes import level_reference
+        for key, slot in zip(list(ref_images), image_slots):
+            ref_images[key], offset = level_reference(vae, ref_images[key], width, height)
+            print(f"[MpiH3References] <Picture {slot}> levelled RGB "
+                  + " ".join(f"{v * 255:+.2f}" for v in offset.tolist()))
         # The prompt arrives addressing SLOTS (what the host app's chips show) and
         # leaves addressing core's ordinals. See rewrite_prompt_tags.
         prompt = rewrite_prompt_tags(prompt, image_slots, video_slots, audio_slots)

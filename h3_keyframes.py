@@ -171,6 +171,28 @@ def level_guide(vae, image):
     return torch.clamp(rgb + offset, 0.0, 1.0), offset
 
 
+def level_reference(vae, image, width, height):
+    """`level_guide` for an H3 REFERENCE picture (`<Picture n>`), at any size.
+
+    H3 copies a reference's grade as well as its look: with only the frame-0 guide levelled, a
+    window still settled ~4.5 levels under its picture; levelling the reference too lifted the
+    whole window ~+2.3 and a 3-window chain ended at -4.0 instead of -7.2 (Cubric Studio MPI-1597).
+    The offset is DC, so it is measured on a copy fitted to the output's pixel area (aspect kept,
+    never upscaled, sides on the VAE's 32 grid) - a full-size photo through the video VAE would
+    only cost memory - and added to the picture at its own size.
+    """
+    import torch
+    import comfy.utils  # type: ignore
+
+    rgb = image[..., :3]
+    h, w = rgb.shape[1], rgb.shape[2]
+    scale = min(1.0, math.sqrt(width * height / float(w * h)))
+    fw, fh = max(32, round(w * scale / 32) * 32), max(32, round(h * scale / 32) * 32)
+    fitted = comfy.utils.common_upscale(rgb.movedim(-1, 1), fw, fh, "area", "disabled").movedim(1, -1)
+    _, offset = level_guide(vae, fitted)
+    return torch.clamp(rgb + offset.to(rgb), 0.0, 1.0), offset
+
+
 class MpiH3LevelGuide:
     @classmethod
     def INPUT_TYPES(cls):
