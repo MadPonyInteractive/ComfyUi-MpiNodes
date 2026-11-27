@@ -207,6 +207,28 @@ def _silent_audio():
     return {"waveform": torch.zeros((1, 1, 1), dtype=torch.float32), "sample_rate": 44100}
 
 
+def _pad_to_picture(audio, frames, fps):
+    """Pad a sound track shorter than the picture with silence up to frames/fps.
+
+    Encoders end AAC on a whole 1024-sample block, so a clip's sound often stops a
+    few ms before its last frame (a 174-frame clip at 24 fps carried 319488 samples,
+    237 short of 7.25 s). Every frame-indexed audio node assumes the track covers the
+    picture: MpiAudioRange clamped the cut silently and the H3 extend splice raised
+    "runs 237 samples past the end" (Cubric Studio MPI-1660). Longer sound is left
+    alone - frame-indexed cuts already end it at the picture.
+    """
+    if audio is None or not fps:
+        return audio
+    import torch  # type: ignore
+
+    wave = audio["waveform"]
+    want = round(frames * audio["sample_rate"] / fps)
+    if wave.shape[-1] >= want:
+        return audio
+    pad = torch.zeros((*wave.shape[:-1], want - wave.shape[-1]), dtype=wave.dtype)
+    return {"waveform": torch.cat([wave, pad], dim=-1), "sample_rate": audio["sample_rate"]}
+
+
 def _load_audio(ffmpeg, path):
     """Extract audio as a ComfyUI AUDIO dict, or None if the file has no audio
     track. Decodes to a temp WAV then reads it back."""
@@ -332,7 +354,7 @@ class MpiLoadVideo:
         images, n = _decode_frames(ffmpeg, path, w, h, rate)
         if rate > 0:
             fps = rate  # report the rate the frames actually came out at
-        audio = _load_audio(ffmpeg, path)
+        audio = _pad_to_picture(_load_audio(ffmpeg, path), n, fps)
         duration = n / fps if fps else 0.0
         # A soundless clip still hands down the silent sentinel: a None here is
         # turned into an ExecutionBlocker by MpiUnpacker and silently blocks
